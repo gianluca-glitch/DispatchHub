@@ -396,6 +396,7 @@ export interface ScenarioResult {
     label: string;
     score: number;
     summary: string;
+    scenarioInput?: ScenarioInput;
   }[];
 }
 

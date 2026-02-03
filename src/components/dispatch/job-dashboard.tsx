@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/select';
 import { ConflictBannerList } from './conflict-banner';
 import { useJob, useConflicts, useWorkers, useTrucks } from '@/hooks';
-import { useDispatchStore } from '@/stores';
+import { useDispatchStore, useCommandCenterStore } from '@/stores';
 import {
   JOB_TYPE_LABELS,
   JOB_STATUS_LABELS,
@@ -73,6 +73,8 @@ export function JobDashboard({ jobId, date, onClose }: JobDashboardProps) {
   const dateInputRef = useRef<HTMLInputElement>(null);
 
   const open = !!jobId;
+  const setHighlightedJob = useCommandCenterStore((s) => s.setHighlightedJob);
+  const setScenario = useCommandCenterStore((s) => s.setScenario);
 
   // Fetch worker recommendations when job opens
   useEffect(() => {
@@ -128,11 +130,20 @@ export function JobDashboard({ jobId, date, onClose }: JobDashboardProps) {
 
   const applyFix = useCallback(
     (type: 'SWAP_TRUCK' | 'SWAP_DRIVER' | 'RESCHEDULE') => {
-      if (type === 'SWAP_TRUCK') truckSelectRef.current?.focus();
-      if (type === 'SWAP_DRIVER') driverSelectRef.current?.focus();
-      if (type === 'RESCHEDULE') dateInputRef.current?.focus();
+      if (!jobId) return;
+      if (type === 'SWAP_TRUCK') {
+        setHighlightedJob(jobId);
+        setScenario({ type: 'SWAP_TRUCK', affectedJobId: jobId });
+        onClose();
+      } else if (type === 'SWAP_DRIVER') {
+        setHighlightedJob(jobId);
+        setScenario({ type: 'SWAP_DRIVER', affectedJobId: jobId });
+        onClose();
+      } else {
+        dateInputRef.current?.focus();
+      }
     },
-    []
+    [jobId, onClose, setHighlightedJob, setScenario]
   );
 
   const assignDriver = useCallback(

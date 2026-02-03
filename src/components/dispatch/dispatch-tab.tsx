@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useDispatchStore } from '@/stores';
+import { useDispatchStore, useCommandCenterStore } from '@/stores';
 import { useJobs } from '@/hooks';
 import { JobRow } from './job-row';
 import { JobDashboard } from './job-dashboard';
+import { CommandCenter } from './command-center';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -27,8 +28,17 @@ function addDays(dateStr: string, delta: number): string {
 
 export function DispatchTab() {
   const { selectedDate, setSelectedDate, selectedJobId, setSelectedJobId } = useDispatchStore();
-  const { data: jobsData, loading: jobsLoading } = useJobs(selectedDate);
+  const setHighlightedJob = useCommandCenterStore((s) => s.setHighlightedJob);
+  const { data: jobsData, loading: jobsLoading, refetch: refetchJobs } = useJobs(selectedDate);
   const jobs = jobsData ?? [];
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+
+  const highlightedJobId = useCommandCenterStore((s) => s.highlightedJobId);
+  useEffect(() => {
+    if (!highlightedJobId || !tableScrollRef.current) return;
+    const row = tableScrollRef.current.querySelector(`[data-job-id="${highlightedJobId}"]`);
+    (row as HTMLElement)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [highlightedJobId]);
 
   const stats = useMemo(() => {
     const total = jobs.length;
@@ -41,9 +51,9 @@ export function DispatchTab() {
   }, [jobs]);
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-8rem)]">
-      {/* Left 70% — Date, stats, job table */}
-      <div className="flex-1 flex flex-col min-w-0" style={{ maxWidth: '70%' }}>
+    <div className="flex flex-col xl:flex-row gap-4 h-[calc(100vh-8rem)]">
+      {/* Left 55% — Date, stats, job table */}
+      <div className="flex-1 flex flex-col min-w-0 xl:max-w-[55%]">
         {/* Date picker */}
         <div className="flex items-center gap-2 mb-4">
           <Button
@@ -76,7 +86,10 @@ export function DispatchTab() {
         </div>
 
         {/* Job table */}
-        <div className="flex-1 border border-border rounded bg-surface-0 overflow-auto">
+        <div
+          ref={tableScrollRef}
+          className="flex-1 border border-border rounded bg-surface-0 overflow-auto"
+        >
           {jobsLoading ? (
             <div className="flex items-center justify-center py-12 text-text-3">
               Loading…
@@ -104,7 +117,11 @@ export function DispatchTab() {
                   <JobRow
                     key={job.id}
                     job={job}
-                    onClick={() => setSelectedJobId(job.id)}
+                    onClick={() => {
+                      setSelectedJobId(job.id);
+                      setHighlightedJob(job.id);
+                    }}
+                    highlighted={highlightedJobId === job.id}
                   />
                 ))}
               </tbody>
@@ -113,12 +130,13 @@ export function DispatchTab() {
         </div>
       </div>
 
-      {/* Right 30% — AI sidebar placeholder */}
-      <div
-        className="bg-surface-0 border border-border rounded flex items-center justify-center text-text-3 text-sm shrink-0"
-        style={{ width: '30%', minWidth: 240 }}
-      >
-        <span>AI sidebar — Phase 4</span>
+      {/* Right 45% — Command Center */}
+      <div className="flex flex-col min-w-0 xl:w-[45%] xl:shrink-0 h-[calc(100vh-8rem)] xl:max-h-[calc(100vh-8rem)]">
+        <CommandCenter
+          selectedDate={selectedDate}
+          onJobSelect={() => {}}
+          onApplied={refetchJobs}
+        />
       </div>
 
       {/* Job dashboard modal */}

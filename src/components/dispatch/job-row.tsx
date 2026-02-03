@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 export interface JobRowProps {
   job: CartingJob;
   onClick: () => void;
+  highlighted?: boolean;
 }
 
 const JOB_TYPE_PILL: Record<JobType, string> = {
@@ -46,7 +47,7 @@ const PRIORITY_BADGE: Record<Priority, string> = {
   URGENT: 'bg-danger/15 text-danger border-danger/40',
 };
 
-export function JobRow({ job, onClick }: JobRowProps) {
+export function JobRow({ job, onClick, highlighted }: JobRowProps) {
   const time = job.time || '—';
   const customer = job.customer || '—';
   const address = job.address || '—';
@@ -55,8 +56,12 @@ export function JobRow({ job, onClick }: JobRowProps) {
 
   return (
     <tr
+      data-job-id={job.id}
       onClick={onClick}
-      className="border-b border-border hover:bg-surface-1 cursor-pointer transition-colors"
+      className={cn(
+        'border-b border-border hover:bg-surface-1 cursor-pointer transition-colors',
+        highlighted && 'bg-amber/10 ring-inset ring-1 ring-amber/30'
+      )}
     >
       <td className="py-2.5 pl-4 pr-2 font-mono text-sm text-text-1 whitespace-nowrap">
         {time}
