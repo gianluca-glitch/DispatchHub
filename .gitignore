@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts
+dist/
+.vercel
+.DS_Store
+prisma/*.db
+prisma/migrations/

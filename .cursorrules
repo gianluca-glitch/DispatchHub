@@ -1,0 +1,92 @@
+# DispatchHub — Cursor Rules
+# This file gives Cursor full context on the project architecture, conventions, and data model.
+
+## Project Overview
+
+DispatchHub is a dispatch, scheduling, and operations platform for EDCC Services Corp, a NYC-based demolition and carting company. It manages 18 vehicles, 16+ workers, and handles service requests from phone calls, emails, and web forms.
+
+## Tech Stack
+
+- **Framework**: Next.js 14 with App Router (TypeScript)
+- **Styling**: Tailwind CSS with custom dark industrial theme (see tailwind.config.ts)
+- **UI Components**: shadcn/ui (installed in src/components/ui/)
+- **Database**: PostgreSQL via Prisma ORM (schema in prisma/schema.prisma)
+- **Cache**: Redis (ioredis)
+- **State Management**: Zustand for client UI state, React Query for server data
+- **AI/LLM**: Claude API via @anthropic-ai/sdk (src/lib/ai/claude.ts)
+- **Voice/SMS**: RingCentral SDK (src/lib/integrations/ringcentral.ts)
+- **Email**: Microsoft Graph API for Outlook (src/lib/integrations/outlook.ts)
+- **Fleet GPS**: IntelliShift Connect API (src/lib/integrations/intellishift.ts)
+- **Maps**: Mapbox or Google Maps
+
+## Architecture Rules
+
+1. **All types** live in `src/types/index.ts`. Import from `@/types` everywhere. Never inline types.
+2. **Database access** goes through `src/lib/db.ts` (Prisma singleton). Never import PrismaClient directly.
+3. **API routes** use Next.js App Router route handlers in `src/app/api/`.
+4. **AI calls** go through `src/lib/ai/claude.ts`. Never call Anthropic SDK directly from components or routes.
+5. **Integration calls** go through their respective wrappers in `src/lib/integrations/`.
+6. **Client state** uses Zustand stores in `src/stores/`. Server data uses React Query hooks in `src/hooks/`.
+7. **Components** are organized by feature: `src/components/dispatch/`, `src/components/intake/`, etc.
+8. **shadcn/ui primitives** live in `src/components/ui/` and should not be modified directly.
+
+## Design System
+
+- Dark theme only. Background: #0c0d0f. Surfaces: #111318 → #22252e → #2b2f3a.
+- Primary accent: amber (#f59e0b). Used for active states, CTAs, important data.
+- Status colors: green (available/success), blue (scheduled/en-route), amber (on-site/warning), red (sick/critical/urgent).
+- Fonts: DM Sans for UI, JetBrains Mono for data/times/codes.
+- Minimal, utilitarian aesthetic. No rounded bubbly UI. This is a dispatch center.
+- Use shadcn/ui components but customize with the dark theme variables.
+
+## Data Model Quick Reference (see prisma/schema.prisma for full)
+
+- **Truck**: 18 vehicles (Box Truck, Container, Packer, Roll-Off, Service, Van)
+- **Worker**: 16 workers with roles (Driver, Laborer, Foreman, Operator), certifications, and status
+- **CartingJob**: Service jobs with type (Pickup, Drop-Off, Dump-Out, Swap), linked to trucks/drivers/projects
+- **DemoProject**: Multi-week demolition projects with crew/truck assignments and AI chat
+- **IntakeItem**: AI-parsed incoming requests from phone/email/form with confidence scoring
+- **Confirmation**: Auto-confirm tracking (Call + Email + SMS) per job
+- **Route**: Optimized daily routes per truck with stops
+- **ChangeLog**: Every edit logged with field-level diffs
+
+## Key Features
+
+### Conflict Detection Engine (src/lib/conflicts.ts)
+- Runs on EVERY job edit, assignment, or approval
+- Checks: truck double-book, driver double-book, worker-out-sick, project resource lock
+- Returns array of Conflict objects with severity (WARNING/CRITICAL)
+- Conflicts don't block saves — dispatcher has final say — but they must be visible
+
+### Intake Pipeline
+- Source → Raw content → Claude AI parser → Parsed fields + confidence score → Intake queue
+- Confidence: 90+ = Pending (ready), 70-89 = Needs Review (flagged), <70 = Flagged (manual review)
+- 5 actions: Approve, Decline, Hold, Edit, Flag
+- On Approve: creates CartingJob + fires auto-confirmation (call + email + SMS) + AI worker pre-assignment
+
+### AI Features
+- **Dispatch AI Sidebar**: Context-aware chat on the dispatch view. Knows today's full schedule.
+- **Project Brain**: Per-project AI chat with persistent memory. Knows project crew/trucks/timeline.
+- **Voice Dispatch**: Mic button → transcribe → parse intent → execute action (mark sick, reschedule, add note, etc.)
+- **Worker Recommendations**: AI ranks available workers by role match, certs, proximity, availability.
+- **AI Fix Options**: When conflicts detected, AI suggests 3 one-click fixes (swap truck, swap driver, reschedule).
+
+### Tab Hierarchy
+- **Tier 1** (primary, larger in header): Dispatch, Planner, Intake
+- **Tier 2** (support, smaller): Projects, Fleet, Crew, Settings
+
+## Naming Conventions
+
+- Files: kebab-case (job-dashboard.tsx, conflict-banner.tsx)
+- Components: PascalCase (JobDashboard, ConflictBanner)
+- Hooks: camelCase with use prefix (useJobs, useConflicts)
+- API routes: route.ts in feature folders
+- Prisma enums: SCREAMING_SNAKE_CASE (ACTIVE_DEMO, DROP_OFF)
+- Display labels: use the label maps in src/types/index.ts
+
+## NYC-Specific Context
+
+- Boroughs: Manhattan, Brooklyn, Queens, Bronx, Staten Island
+- Routing must account for: bridge/tunnel restrictions, commercial vehicle routes, one-way streets
+- Container sizes: 10yd, 20yd, 30yd, 40yd
+- Common job types: picking up full containers, dropping off empty ones, dumping out (emptying on-site), swapping (pick up full + drop off empty)
