@@ -3,7 +3,7 @@
 // Server data lives in React Query / SWR — this is for UI-only state
 
 import { create } from 'zustand';
-import type { PreviewAssignment } from '@/types';
+import type { PreviewAssignment, ScenarioInput, ScenarioResult } from '@/types';
 
 interface DispatchStore {
   selectedDate: string;                     // Current dispatch date (YYYY-MM-DD)
@@ -115,4 +115,89 @@ export const usePreviewStore = create<PreviewStore>((set, get) => ({
         time: p.timeOverride ?? '',
       }));
   },
+}));
+
+// ── COMMAND CENTER (dispatch scenario + route display) ──
+
+interface CommandCenterStore {
+  selectedTruckRoutes: string[];
+  highlightedJobId: string | null;
+  showAllRoutes: boolean;
+
+  activeScenario: ScenarioInput | null;
+  scenarioResult: ScenarioResult | null;
+  scenarioLoading: boolean;
+  scenarioHistory: { input: ScenarioInput; result: ScenarioResult }[];
+
+  selectedCards: { truckId: string | null; driverId: string | null; workerIds: string[] };
+  previewJobId: string | null;
+
+  setSelectedRoutes: (truckIds: string[]) => void;
+  toggleRoute: (truckId: string) => void;
+  setShowAllRoutes: (show: boolean) => void;
+  setHighlightedJob: (jobId: string | null) => void;
+
+  setScenario: (scenario: ScenarioInput | null) => void;
+  setScenarioResult: (result: ScenarioResult | null) => void;
+  setScenarioLoading: (loading: boolean) => void;
+  pushScenarioHistory: (input: ScenarioInput, result: ScenarioResult) => void;
+
+  selectCard: (type: 'truck' | 'driver' | 'worker', id: string) => void;
+  clearCards: () => void;
+  setPreviewJob: (jobId: string | null) => void;
+
+  reset: () => void;
+}
+
+const defaultCommandCenter = {
+  selectedTruckRoutes: [] as string[],
+  highlightedJobId: null as string | null,
+  showAllRoutes: true,
+  activeScenario: null as ScenarioInput | null,
+  scenarioResult: null as ScenarioResult | null,
+  scenarioLoading: false,
+  scenarioHistory: [] as { input: ScenarioInput; result: ScenarioResult }[],
+  selectedCards: { truckId: null as string | null, driverId: null as string | null, workerIds: [] as string[] },
+  previewJobId: null as string | null,
+};
+
+export const useCommandCenterStore = create<CommandCenterStore>((set, get) => ({
+  ...defaultCommandCenter,
+
+  setSelectedRoutes: (truckIds) => set({ selectedTruckRoutes: truckIds }),
+  toggleRoute: (truckId) =>
+    set((state) => ({
+      selectedTruckRoutes: state.selectedTruckRoutes.includes(truckId)
+        ? state.selectedTruckRoutes.filter((id) => id !== truckId)
+        : [...state.selectedTruckRoutes, truckId],
+    })),
+  setShowAllRoutes: (show) => set({ showAllRoutes: show }),
+  setHighlightedJob: (jobId) => set({ highlightedJobId: jobId }),
+
+  setScenario: (scenario) => set({ activeScenario: scenario }),
+  setScenarioResult: (result) => set({ scenarioResult: result }),
+  setScenarioLoading: (loading) => set({ scenarioLoading: loading }),
+  pushScenarioHistory: (input, result) =>
+    set((state) => ({
+      scenarioHistory: [...state.scenarioHistory, { input, result }],
+    })),
+
+  selectCard: (type, id) =>
+    set((state) => {
+      const cards = { ...state.selectedCards };
+      if (type === 'truck') {
+        cards.truckId = id;
+      } else if (type === 'driver') {
+        cards.driverId = id;
+      } else {
+        cards.workerIds = cards.workerIds.includes(id)
+          ? cards.workerIds.filter((w) => w !== id)
+          : [...cards.workerIds, id];
+      }
+      return { selectedCards: cards };
+    }),
+  clearCards: () => set({ selectedCards: { truckId: null, driverId: null, workerIds: [] } }),
+  setPreviewJob: (jobId) => set({ previewJobId: jobId }),
+
+  reset: () => set(defaultCommandCenter),
 }));

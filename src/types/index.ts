@@ -329,3 +329,89 @@ export interface BatchApproveItem {
   timeOverride: string | null;
   containerSize?: string | null;
 }
+
+// ── DISPATCH COMMAND CENTER ─────────────────────────────────
+
+export interface RoutePoint {
+  jobId: string;
+  customer: string;
+  address: string;
+  borough: Borough;
+  time: string;
+  type: JobType;
+  status: JobStatus;
+  sequence: number;
+  lat: number | null;
+  lng: number | null;
+  truckId: string;
+  truckName: string;
+}
+
+export interface TruckRoute {
+  truckId: string;
+  truckName: string;
+  truckType: TruckType;
+  truckStatus: TruckStatus;
+  driverName: string | null;
+  driverId: string | null;
+  stops: RoutePoint[];
+  totalJobs: number;
+  boroughs: Borough[];
+  currentStopIndex: number;
+}
+
+export interface ScenarioInput {
+  type: 'TRUCK_DOWN' | 'WORKER_SICK' | 'ADD_JOB' | 'SWAP_TRUCK' | 'SWAP_DRIVER' | 'RESCHEDULE' | 'REASSIGN';
+  affectedTruckId?: string;
+  affectedWorkerId?: string;
+  affectedJobId?: string;
+  replacementTruckId?: string;
+  replacementDriverId?: string;
+  newTime?: string;
+  newDate?: string;
+}
+
+export interface ScenarioResult {
+  feasible: boolean;
+  score: number;
+  affectedRoutes: {
+    truckId: string;
+    truckName: string;
+    before: { totalStops: number; estimatedDuration: string; boroughs: string[] };
+    after: { totalStops: number; estimatedDuration: string; boroughs: string[] };
+    impact: string;
+  }[];
+  unassignedJobs: {
+    jobId: string;
+    customer: string;
+    address: string;
+    time: string;
+    suggestedTruck: string;
+    suggestedDriver: string;
+    reason: string;
+  }[];
+  warnings: string[];
+  recommendation: string;
+  alternativeScenarios: {
+    label: string;
+    score: number;
+    summary: string;
+  }[];
+}
+
+export interface ResourceCard {
+  id: string;
+  type: 'truck' | 'worker';
+  name: string;
+  truckType?: TruckType;
+  truckStatus?: TruckStatus;
+  currentBorough?: string;
+  todayJobs?: number;
+  currentStop?: string;
+  role?: WorkerRole;
+  workerStatus?: WorkerStatus;
+  certs?: string[];
+  todayAssignments?: number;
+  available: boolean;
+  inScenario: boolean;
+}

@@ -302,3 +302,141 @@ export async function analyzePreviewAssignment(input: PreviewAnalysisInput) {
   const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   return JSON.parse(cleaned) as import('@/types').PreviewAnalysis;
 }
+
+// ─── DISPATCH COMMAND CENTER: SCENARIO ANALYSIS ─────────────
+// Analyzes a scenario (truck down, worker sick, swap, reschedule, etc.)
+
+export interface AnalyzeScenarioInput {
+  scenario: import('@/types').ScenarioInput;
+  todayJobs: Array<{
+    id: string;
+    customer: string;
+    address: string;
+    borough: string;
+    time: string;
+    type: string;
+    status: string;
+    truckId: string | null;
+    truckName?: string | null;
+    driverId: string | null;
+    driverName?: string | null;
+    workerIds?: string[];
+    workerNames?: string[];
+  }>;
+  trucks: Array<{
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    currentLocation: string | null;
+    todayJobCount?: number;
+  }>;
+  workers: Array<{
+    id: string;
+    name: string;
+    role: string;
+    status: string;
+    certifications: string[];
+    todayJobCount?: number;
+  }>;
+  truckRoutes: Array<{
+    truckId: string;
+    truckName: string;
+    stops: Array<{ jobId: string; customer: string; address: string; borough: string; time: string; type: string; status: string; sequence: number }>;
+  }>;
+}
+
+export async function analyzeScenario(input: AnalyzeScenarioInput): Promise<import('@/types').ScenarioResult> {
+  const system = `You are the dispatch scenario engine for EDCC Services Corp, a NYC demolition and carting company operating 18 trucks across 5 boroughs.
+
+Analyze this dispatch scenario. Consider:
+- Equipment compatibility (roll-off for containers, packers for waste, box trucks for debris)
+- Borough proximity and realistic NYC travel times (not straight-line distance)
+- Driver certifications and current assignments
+- Time windows and feasibility of rerouting mid-day
+- Which jobs become unassigned and need coverage
+- Workload balance across the fleet
+
+Be specific: use truck names, driver names, borough names, and estimated times.
+Give the dispatcher clear options ranked by quality score.
+
+Respond ONLY with valid JSON matching this exact schema:
+{
+  "feasible": boolean,
+  "score": number (0-100),
+  "affectedRoutes": [{ "truckId": string, "truckName": string, "before": { "totalStops": number, "estimatedDuration": string (under 10 words), "boroughs": string[] }, "after": { "totalStops": number, "estimatedDuration": string, "boroughs": string[] }, "impact": string (under 20 words) }],
+  "unassignedJobs": [{ "jobId": string, "customer": string, "address": string, "time": string, "suggestedTruck": string, "suggestedDriver": string, "reason": string (under 20 words) }],
+  "warnings": string[] (each under 20 words),
+  "recommendation": string (1-2 sentences, under 40 words),
+  "alternativeScenarios": [{ "label": string (under 10 words), "score": number, "summary": string (under 25 words) }]
+}
+
+No markdown, no explanation, no code fences. JSON only.`;
+
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 2048,
+    system,
+    messages: [{ role: 'user', content: `Analyze this scenario:\n\n${JSON.stringify(input, null, 2)}` }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  try {
+    return JSON.parse(cleaned) as import('@/types').ScenarioResult;
+  } catch {
+    return {
+      feasible: false,
+      score: 0,
+      affectedRoutes: [],
+      unassignedJobs: [],
+      warnings: [],
+      recommendation: cleaned || 'Scenario analysis failed to parse.',
+      alternativeScenarios: [],
+    };
+  }
+}
+
+// ─── QUICK RECOMMENDATION (card preview) ───────────────────
+
+export interface QuickRecommendationInput {
+  job: {
+    customer: string;
+    address: string;
+    borough: string;
+    time: string;
+    type: string;
+  };
+  proposedTruckName: string;
+  proposedDriverName: string;
+  truckType: string;
+  driverCerts: string[];
+  todayScheduleSummary: string;
+}
+
+export interface QuickRecommendationResult {
+  score: number;
+  oneliner: string;
+  proceed: boolean;
+}
+
+export async function getQuickRecommendation(input: QuickRecommendationInput): Promise<QuickRecommendationResult> {
+  const system = `Rate this dispatch assignment 0-100. One sentence why. Consider equipment match, borough proximity, driver certs, and schedule fit.
+Respond ONLY with JSON: { "score": number, "oneliner": string (under 20 words), "proceed": boolean }
+No markdown, no explanation. JSON only.`;
+
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 256,
+    system,
+    messages: [{ role: 'user', content: JSON.stringify(input, null, 2) }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  try {
+    return JSON.parse(cleaned) as QuickRecommendationResult;
+  } catch {
+    return { score: 0, oneliner: 'Unable to rate assignment.', proceed: false };
+  }
+}
