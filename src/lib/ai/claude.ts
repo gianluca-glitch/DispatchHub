@@ -215,3 +215,90 @@ Be direct and practical. Dispatchers are busy — no fluff. Use names and number
 
   return response.content[0].type === 'text' ? response.content[0].text : '';
 }
+
+// ─── PREVIEW ASSIGNMENT ANALYSIS ───────────────────────────
+// Analyzes a proposed truck/driver/worker assignment for an intake item
+// Returns efficiency score, conflicts, warnings, positives, deadhead, workload, suggestion
+
+export interface PreviewAnalysisInput {
+  parsed: {
+    customer: string | null;
+    address: string | null;
+    borough: string | null;
+    serviceType: string | null;
+    date: string | null;
+    time: string | null;
+    containerSize: string | null;
+    notes: string | null;
+  };
+  assignment: {
+    truckId: string | null;
+    driverId: string | null;
+    workerIds: string[];
+    timeOverride: string | null;
+  };
+  existingJobs: Array<{
+    id: string;
+    customer: string;
+    address: string;
+    borough: string;
+    time: string;
+    truckId: string | null;
+    truckName?: string | null;
+    driverId: string | null;
+    driverName?: string | null;
+    workerIds?: string[];
+  }>;
+  otherPreviews: Array<{
+    intakeItemId: string;
+    customerName?: string;
+    truckId: string;
+    driverId: string;
+    workerIds: string[];
+    time: string;
+  }>;
+  workers: Array<{
+    id: string;
+    name: string;
+    role: string;
+    status: string;
+    certifications: string[];
+    jobCountToday: number;
+  }>;
+  trucks: Array<{
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    currentLocation: string | null;
+    jobCountToday: number;
+  }>;
+}
+
+export async function analyzePreviewAssignment(input: PreviewAnalysisInput) {
+  const system = `You are the dispatch analysis engine for EDCC Services Corp, a NYC demolition and carting company. Analyze this proposed dispatch assignment. Be specific with borough names, street references, and times. Compare against alternatives. Give honest pros and cons. If there's a clearly better option, say so directly. The dispatcher wants to make informed decisions, not be told what to do. Respond ONLY with valid JSON matching the PreviewAnalysis schema.`;
+
+  const schema = `PreviewAnalysis: {
+  "efficiencyScore": number (0-100),
+  "conflicts": [] (leave empty; server injects conflict engine results),
+  "warnings": string[],
+  "positives": string[],
+  "estimatedDeadhead": string,
+  "workloadBalance": string,
+  "alternativeSuggestion": string,
+  "routeImpact": string
+}`;
+
+  const userContent = `Schema to return:\n${schema}\n\nInput data:\n${JSON.stringify(input, null, 2)}`;
+
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    system: `${system}\n\nReturn only valid JSON. Set "conflicts" to [].`,
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  return JSON.parse(cleaned) as import('@/types').PreviewAnalysis;
+}

@@ -13,6 +13,8 @@ export interface ApprovalActionsProps {
   onEdit: () => void;
   onFlag: () => void;
   loading?: boolean;
+  /** When true, Approve button is hidden (e.g. when using Preview Mode Confirm & Schedule) */
+  hideApprove?: boolean;
   className?: string;
 }
 
@@ -25,6 +27,7 @@ export function ApprovalActions({
   onEdit,
   onFlag,
   loading = false,
+  hideApprove = false,
   className,
 }: ApprovalActionsProps) {
   const isFinal = status === 'APPROVED' || status === 'DECLINED';
@@ -36,6 +39,7 @@ export function ApprovalActions({
         className
       )}
     >
+      {!hideApprove && (
       <Button
         size="sm"
         className="bg-success/20 text-success border border-success/40 hover:bg-success/30"
@@ -45,6 +49,7 @@ export function ApprovalActions({
         {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
         <span className="ml-1">Approve</span>
       </Button>
+      )}
       <Button
         size="sm"
         variant="outline"

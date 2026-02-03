@@ -5,6 +5,14 @@
 import { db } from '@/lib/db';
 import type { Conflict } from '@/types';
 
+export interface TentativeJob {
+  jobId: string;
+  truckId: string | null;
+  driverId: string | null;
+  time: string;
+  customer?: string;
+}
+
 interface ConflictCheckInput {
   jobId: string;
   date: Date;
@@ -13,14 +21,15 @@ interface ConflictCheckInput {
   driverId?: string | null;
   workerIds?: string[];
   projectId?: string | null;
+  /** When checking preview assignments, pass other intake previews as tentatively booked */
+  tentativeJobs?: TentativeJob[];
 }
 
 export async function detectConflicts(input: ConflictCheckInput): Promise<Conflict[]> {
   const conflicts: Conflict[] = [];
-  const { jobId, date, time, truckId, driverId, workerIds = [], projectId } = input;
+  const { jobId, date, time, truckId, driverId, workerIds = [], projectId, tentativeJobs = [] } = input;
 
-  // 1. TRUCK DOUBLE-BOOK
-  // Same truck assigned to another job on the same date
+  // 1. TRUCK DOUBLE-BOOK (DB jobs + tentative)
   if (truckId) {
     const truckConflicts = await db.cartingJob.findMany({
       where: {
@@ -42,10 +51,23 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
         affectedTruckId: truckId,
       });
     }
+
+    for (const t of tentativeJobs) {
+      if (t.jobId === jobId || !t.truckId) continue;
+      if (t.truckId === truckId) {
+        const truck = await db.truck.findUnique({ where: { id: truckId }, select: { name: true } });
+        conflicts.push({
+          type: 'TRUCK_DOUBLE_BOOK',
+          severity: time === t.time ? 'CRITICAL' : 'WARNING',
+          message: `${truck?.name ?? 'Truck'} is tentatively assigned to ${t.customer ?? 'another intake'} at ${t.time}`,
+          affectedJobId: t.jobId,
+          affectedTruckId: truckId,
+        });
+      }
+    }
   }
 
-  // 2. DRIVER DOUBLE-BOOK
-  // Same driver assigned to another job at overlapping time
+  // 2. DRIVER DOUBLE-BOOK (DB jobs + tentative)
   if (driverId) {
     const driverConflicts = await db.cartingJob.findMany({
       where: {
@@ -57,14 +79,25 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
       select: { id: true, customer: true, time: true },
     });
 
-    if (driverConflicts.length > 0) {
-      const driver = await db.worker.findUnique({ where: { id: driverId }, select: { name: true } });
-      for (const conflict of driverConflicts) {
+    const driver = await db.worker.findUnique({ where: { id: driverId }, select: { name: true } });
+    for (const conflict of driverConflicts) {
+      conflicts.push({
+        type: 'DRIVER_DOUBLE_BOOK',
+        severity: time === conflict.time ? 'CRITICAL' : 'WARNING',
+        message: `${driver?.name ?? 'Driver'} is also assigned to ${conflict.customer} at ${conflict.time}`,
+        affectedJobId: conflict.id,
+        affectedWorkerId: driverId,
+      });
+    }
+
+    for (const t of tentativeJobs) {
+      if (t.jobId === jobId || !t.driverId) continue;
+      if (t.driverId === driverId) {
         conflicts.push({
           type: 'DRIVER_DOUBLE_BOOK',
-          severity: time === conflict.time ? 'CRITICAL' : 'WARNING',
-          message: `${driver?.name ?? 'Driver'} is also assigned to ${conflict.customer} at ${conflict.time}`,
-          affectedJobId: conflict.id,
+          severity: time === t.time ? 'CRITICAL' : 'WARNING',
+          message: `${driver?.name ?? 'Driver'} is tentatively assigned to ${t.customer ?? 'another intake'} at ${t.time}`,
+          affectedJobId: t.jobId,
           affectedWorkerId: driverId,
         });
       }

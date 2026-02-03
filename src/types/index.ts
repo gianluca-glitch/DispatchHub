@@ -281,3 +281,51 @@ export interface SearchResult {
   sublabel: string;
   url: string;
 }
+
+// ── PREVIEW / SANDBOX ───────────────────────────────────────
+
+export interface PreviewAnalysis {
+  efficiencyScore: number;           // 0-100
+  conflicts: Conflict[];             // from conflict engine
+  warnings: string[];                // soft warnings (e.g. "heavy day", "long deadhead")
+  positives: string[];               // good things (e.g. "keeps crew paired", "short repositioning")
+  estimatedDeadhead: string;         // e.g. "3.2 miles from previous job"
+  workloadBalance: string;           // e.g. "Marco: 4 jobs today (above average)"
+  alternativeSuggestion: string;     // e.g. "Swapping to Packer 09 saves 20 min travel"
+  routeImpact: string;              // e.g. "Adds 15 min to Packer 11's route"
+}
+
+export interface PreviewAssignment {
+  intakeItemId: string;
+  truckId: string | null;
+  driverId: string | null;
+  workerIds: string[];
+  timeOverride: string | null;
+  containerSize: string | null;
+  analysis: PreviewAnalysis | null;
+  analysisLoading: boolean;
+}
+
+export interface PreviewAnalyzeRequest {
+  intakeItemId: string;
+  truckId: string | null;
+  driverId: string | null;
+  workerIds: string[];
+  timeOverride: string | null;
+  otherPreviews: {
+    intakeItemId: string;
+    truckId: string;
+    driverId: string;
+    workerIds: string[];
+    time: string;
+  }[];
+}
+
+export interface BatchApproveItem {
+  intakeItemId: string;
+  truckId: string;
+  driverId: string;
+  workerIds: string[];
+  timeOverride: string | null;
+  containerSize?: string | null;
+}

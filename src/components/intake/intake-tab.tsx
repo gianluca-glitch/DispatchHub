@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useIntake } from '@/hooks';
 import { IntakeCard } from './intake-card';
+import { PreviewSummary } from './preview-summary';
 import type { IntakeItem, IntakeStatus } from '@/types';
 import { INTAKE_STATUS_LABELS } from '@/types';
 import { cn } from '@/lib/utils';
@@ -43,7 +44,8 @@ export function IntakeTab() {
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 relative">
+      <PreviewSummary />
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
           <button
