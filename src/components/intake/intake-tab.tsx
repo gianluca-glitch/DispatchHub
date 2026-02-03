@@ -78,6 +78,7 @@ export function IntakeTab() {
                 ...item,
                 ...fieldUpdates[item.id],
               } as IntakeItem}
+              allIntakeItems={items}
               onStatusChange={handleStatusChange}
               onFieldChange={handleFieldChange}
               refetch={refetch}
