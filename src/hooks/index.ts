@@ -5,7 +5,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { CartingJob, Worker, Truck, IntakeItem, DemoProject, ChangeLogEntry, Conflict } from '@/types';
+import type { CartingJob, Worker, Truck, IntakeItem, DemoProject, ChangeLogEntry, Conflict, TruckRoute } from '@/types';
 
 // ── Generic fetcher ─────────────────────────────────────────
 
@@ -77,6 +77,12 @@ export function useProjects() {
 
 export function useChangeLog(limit = 50) {
   return useFetch<ChangeLogEntry[]>(`/api/changelog?limit=${limit}`);
+}
+
+// ── Dispatch routes ──────────────────────────────────────────
+
+export function useRoutes(date: string) {
+  return useFetch<TruckRoute[]>(`/api/dispatch/routes?date=${date}`, [date]);
 }
 
 // ── Conflicts ───────────────────────────────────────────────
