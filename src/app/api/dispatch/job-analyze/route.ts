@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { analyzeJob } from '@/lib/ai/claude';
-import type { JobAnalysis } from '@/types';
+import { detectConflicts } from '@/lib/conflicts';
+import type { JobAnalysisResponse, Conflict } from '@/types';
 
 type Action = 'initial' | 'swap_truck' | 'swap_driver' | 'reschedule' | 'freeform';
 
 // POST /api/dispatch/job-analyze
+// Returns JobAnalysisResponse. When action + newDriverId/newTruckId are provided, returns IMPACT of that change.
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const jobId = body.jobId as string | undefined;
@@ -13,6 +15,8 @@ export async function POST(req: NextRequest) {
   const action = (body.action as Action) ?? 'initial';
   const truckId = body.truckId as string | null | undefined;
   const driverId = body.driverId as string | null | undefined;
+  const newTruckId = body.newTruckId as string | null | undefined;
+  const newDriverId = body.newDriverId as string | null | undefined;
 
   if (!jobId) {
     return NextResponse.json({ error: 'jobId required' }, { status: 400 });
@@ -69,8 +73,9 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  const effectiveTruckId = truckId !== undefined ? truckId : job.truckId;
-  const effectiveDriverId = driverId !== undefined ? driverId : job.driverId;
+  // For impact analysis: use newTruckId/newDriverId when provided (e.g. preview state)
+  const effectiveTruckId = newTruckId !== undefined ? newTruckId : (truckId !== undefined ? truckId : job.truckId);
+  const effectiveDriverId = newDriverId !== undefined ? newDriverId : (driverId !== undefined ? driverId : job.driverId);
   const effectiveTruck = effectiveTruckId ? trucks.find((t) => t.id === effectiveTruckId) : null;
   const effectiveDriver = effectiveDriverId ? workers.find((w) => w.id === effectiveDriverId) : null;
 
@@ -91,10 +96,10 @@ export async function POST(req: NextRequest) {
       notes: job.notes,
     },
     action,
-    proposedTruckId: truckId,
-    proposedTruckName: truckId ? trucks.find((t) => t.id === truckId)?.name ?? null : undefined,
-    proposedDriverId: driverId,
-    proposedDriverName: driverId ? workers.find((w) => w.id === driverId)?.name ?? null : undefined,
+    proposedTruckId: newTruckId ?? truckId,
+    proposedTruckName: (newTruckId ?? truckId) ? trucks.find((t) => t.id === (newTruckId ?? truckId))?.name ?? null : undefined,
+    proposedDriverId: newDriverId ?? driverId,
+    proposedDriverName: (newDriverId ?? driverId) ? workers.find((w) => w.id === (newDriverId ?? driverId))?.name ?? null : undefined,
     todayJobs: jobs.map((j) => ({
       id: j.id,
       customer: j.customer,
@@ -124,19 +129,76 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    const result: JobAnalysis = await analyzeJob(analysisInput);
-    return NextResponse.json(result);
+    const [conflicts, aiResult] = await Promise.all([
+      detectConflicts({
+        jobId,
+        date: dateOnly,
+        time: job.time,
+        truckId: effectiveTruckId ?? undefined,
+        driverId: effectiveDriverId ?? undefined,
+      }),
+      analyzeJob(analysisInput),
+    ]);
+
+    const workerById = new Map(workers.map((w) => [w.id, w]));
+    const truckById = new Map(trucks.map((t) => [t.id, t]));
+
+    const workersOut: JobAnalysisResponse['workers'] = (aiResult.workerRecs ?? []).slice(0, 3).map((rec) => {
+      const w = workerById.get(rec.workerId);
+      return {
+        id: rec.workerId,
+        name: rec.name,
+        score: rec.score,
+        reason: rec.reason,
+        role: w?.role ?? 'DRIVER',
+        status: w?.status ?? 'AVAILABLE',
+      };
+    });
+
+    const trucksOut: JobAnalysisResponse['trucks'] = (aiResult.truckRecs ?? []).slice(0, 3).map((rec) => {
+      const t = truckById.get(rec.truckId);
+      return {
+        id: rec.truckId,
+        name: rec.name,
+        type: rec.type ?? (t?.type ?? 'VAN'),
+        reason: rec.reason,
+        status: t?.status ?? 'AVAILABLE',
+        jobCount: truckJobCount.get(rec.truckId) ?? 0,
+      };
+    });
+
+    const topWorker = workersOut[0]
+      ? {
+          id: workersOut[0].id,
+          name: workersOut[0].name,
+          score: workersOut[0].score,
+          reason: workersOut[0].reason,
+          role: workersOut[0].role,
+        }
+      : null;
+
+    const response: JobAnalysisResponse = {
+      impactSummary: aiResult.impactSummary ?? 'No summary.',
+      conflicts: conflicts as Conflict[],
+      warnings: aiResult.warnings ?? [],
+      topWorker,
+      workers: workersOut,
+      trucks: trucksOut,
+    };
+
+    return NextResponse.json(response);
   } catch (e) {
     console.error('job-analyze', e);
     return NextResponse.json(
       {
         error: 'Analysis failed',
-        conflicts: [],
-        recommendations: [],
-        warnings: [],
         impactSummary: 'Analysis failed.',
-        workerRecs: [],
-      },
+        conflicts: [],
+        warnings: [],
+        topWorker: null,
+        workers: [],
+        trucks: [],
+      } as JobAnalysisResponse,
       { status: 500 }
     );
   }

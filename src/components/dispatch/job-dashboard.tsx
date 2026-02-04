@@ -50,6 +50,36 @@ const JOB_STATUSES: JobStatus[] = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CAN
 const PRIORITIES: Priority[] = ['NORMAL', 'HIGH', 'URGENT'];
 const BOROUGHS: Borough[] = ['MANHATTAN', 'BROOKLYN', 'QUEENS', 'BRONX', 'STATEN_ISLAND'];
 
+function describePayloadChanges(
+  payload: Record<string, unknown>,
+  ctx: { trucks: { id: string; name: string }[]; workers: { id: string; name: string }[] }
+): string {
+  const parts: string[] = [];
+  if (payload.type != null) parts.push(`type → ${JOB_TYPE_LABELS[payload.type as JobType] ?? payload.type}`);
+  if (payload.status != null) parts.push(`status → ${JOB_STATUS_LABELS[payload.status as JobStatus] ?? payload.status}`);
+  if (payload.borough != null) parts.push(`borough → ${BOROUGH_LABELS[payload.borough as Borough] ?? payload.borough}`);
+  if (payload.date != null) parts.push(`date → ${String(payload.date)}`);
+  if (payload.time != null) parts.push(`time → ${String(payload.time)}`);
+  if (payload.containerSize != null) parts.push(`container → ${String(payload.containerSize)}`);
+  if (payload.priority != null) parts.push(`priority → ${PRIORITY_LABELS[payload.priority as Priority] ?? payload.priority}`);
+  if ('truckId' in payload) {
+    if (payload.truckId == null) parts.push('truck unassigned');
+    else {
+      const name = ctx.trucks.find((t) => t.id === payload.truckId)?.name ?? String(payload.truckId);
+      parts.push(`truck → ${name}`);
+    }
+  }
+  if ('driverId' in payload) {
+    if (payload.driverId == null) parts.push('driver unassigned');
+    else {
+      const name = ctx.workers.find((w) => w.id === payload.driverId)?.name ?? String(payload.driverId);
+      parts.push(`driver → ${name}`);
+    }
+  }
+  if (payload.notes != null) parts.push('notes updated');
+  return parts.length ? parts.join('; ') : 'updated';
+}
+
 export function JobDashboard({ jobId, date, onClose, onApplied }: JobDashboardProps) {
   const { data: job, loading: jobLoading, refetch: refetchJob } = useJob(jobId);
   const { data: workersData } = useWorkers();
@@ -59,7 +89,7 @@ export function JobDashboard({ jobId, date, onClose, onApplied }: JobDashboardPr
   const open = !!jobId;
   const routeDate = job ? jobDateStr(job) : date;
 
-  const { modifiedFields, setModifiedField, clearModifiedFields, triggerDispatchRefetch } = useCommandCenterStore();
+  const { modifiedFields, setModifiedField, clearModifiedFields, triggerDispatchRefetch, addSidebarMessage } = useCommandCenterStore();
 
   const hasModifications = Object.keys(modifiedFields).length > 0;
   const [patchLoading, setPatchLoading] = useState(false);
@@ -86,6 +116,13 @@ export function JobDashboard({ jobId, date, onClose, onApplied }: JobDashboardPr
           toast.success('Job updated');
           clearModifiedFields();
           refetchAll();
+          const customer = typeof job?.customer === 'string' ? job.customer : 'Job';
+          const what = describePayloadChanges(payload, { trucks, workers });
+          addSidebarMessage({
+            role: 'assistant',
+            content: `📋 Job updated: ${customer} — ${what}. Schedule refreshed.`,
+            type: 'text',
+          });
         }
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Update failed');
@@ -93,7 +130,7 @@ export function JobDashboard({ jobId, date, onClose, onApplied }: JobDashboardPr
         setPatchLoading(false);
       }
     },
-    [jobId, refetchAll, clearModifiedFields]
+    [jobId, job?.customer, refetchAll, clearModifiedFields, addSidebarMessage, trucks, workers]
   );
 
   const handleSaveChanges = useCallback(() => {
@@ -324,7 +361,7 @@ export function JobDashboard({ jobId, date, onClose, onApplied }: JobDashboardPr
               <div>
                 <FieldRow label="Notes" modified={false}>
                   <textarea
-                    className="min-h-[3.5rem] max-h-20 w-full rounded border border-border bg-surface-1 px-2 py-1.5 text-sm text-text-0 placeholder:text-text-3 resize-y"
+                    className="min-h-[2.5rem] max-h-[4rem] w-full rounded border border-border bg-surface-1 px-2 py-1.5 text-sm text-text-0 placeholder:text-text-3 resize-y"
                     defaultValue={job.notes ?? ''}
                     placeholder="Notes"
                     rows={2}
@@ -379,7 +416,7 @@ function FieldRow({
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center gap-2">
-        <span className="text-xs text-text-3 font-medium">{label}</span>
+        <span className="text-[11px] text-text-3 uppercase tracking-wide">{label}</span>
         {modified && <span className="w-2 h-2 rounded-full bg-amber shrink-0" title="Modified" />}
       </div>
       {children}

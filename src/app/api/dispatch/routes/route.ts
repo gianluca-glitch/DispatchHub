@@ -3,14 +3,22 @@ import { db } from '@/lib/db';
 import type { TruckRoute, RoutePoint, Borough, TruckType, TruckStatus, JobType, JobStatus } from '@/types';
 
 // GET /api/dispatch/routes?date=YYYY-MM-DD
+// Normalize to date-only range (UTC) so jobs for the selected calendar day are returned regardless of timezone.
 export async function GET(req: NextRequest) {
   const dateParam = req.nextUrl.searchParams.get('date');
-  const date = dateParam ? new Date(dateParam) : new Date();
-  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dateStr =
+    dateParam ??
+    (() => {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    })();
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const startOfDay = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+  const endOfDay = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
 
   const jobs = await db.cartingJob.findMany({
     where: {
-      date: dateOnly,
+      date: { gte: startOfDay, lte: endOfDay },
       status: { notIn: ['CANCELLED'] },
       truckId: { not: null },
     },

@@ -130,6 +130,8 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     setSidebarOpen,
     sidebarMessages,
     addSidebarMessage,
+    lastConflictMessageDate,
+    setLastConflictMessageDate,
     triggerDispatchRefetch,
     dispatchRefetchTrigger,
     setLastSuggestedActions,
@@ -147,7 +149,6 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
   const [loading, setLoading] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const lastConflictKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -159,12 +160,11 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
 
   useEffect(() => {
     if (conflictsLoading) return;
-    const key = `${selectedDate}:${conflicts.length}:${conflicts.map((c) => c.message).join('|')}`;
-    if (lastConflictKeyRef.current === key) return;
-    lastConflictKeyRef.current = key;
+    if (lastConflictMessageDate === selectedDate) return;
     const content = conflictStatusMessage(conflicts);
     addSidebarMessage({ role: 'assistant', content, type: 'text' });
-  }, [selectedDate, conflicts, conflictsLoading, addSidebarMessage]);
+    setLastConflictMessageDate(selectedDate);
+  }, [selectedDate, conflicts, conflictsLoading, addSidebarMessage, lastConflictMessageDate, setLastConflictMessageDate]);
 
   const buildConversationHistory = (): { role: string; content: string }[] => {
     return sidebarMessages.slice(-10).map((m) => ({

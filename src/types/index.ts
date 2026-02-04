@@ -453,6 +453,36 @@ export interface JobAnalysis {
   optimizationTip?: string;
 }
 
+/** API response shape for GET/POST job-analyze (war-room panel). */
+export interface JobAnalysisResponse {
+  impactSummary: string;
+  conflicts: Conflict[];
+  warnings: string[];
+  topWorker: {
+    id: string;
+    name: string;
+    score: number;
+    reason: string;
+    role: string;
+  } | null;
+  workers: Array<{
+    id: string;
+    name: string;
+    score: number;
+    reason: string;
+    role: string;
+    status: string;
+  }>;
+  trucks: Array<{
+    id: string;
+    name: string;
+    type: string;
+    reason: string;
+    status: string;
+    jobCount: number;
+  }>;
+}
+
 export interface JobAnalysisFeedEntry {
   timestamp: Date;
   trigger: string;

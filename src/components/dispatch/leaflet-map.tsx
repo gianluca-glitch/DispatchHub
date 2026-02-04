@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useEffect } from 'react';
+import { useMemo, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { RoutePoint, JobStatus, Borough } from '@/types';
@@ -16,6 +16,22 @@ const BOROUGH_CENTERS: Record<Borough, [number, number]> = {
   STATEN_ISLAND: [40.5795, -74.1502],
 };
 
+const BOROUGH_NAMES: Record<string, Borough> = {
+  manhattan: 'MANHATTAN',
+  brooklyn: 'BROOKLYN',
+  queens: 'QUEENS',
+  bronx: 'BRONX',
+  'staten island': 'STATEN_ISLAND',
+};
+
+function parseBoroughFromAddress(address: string): Borough | null {
+  const lower = address.toLowerCase();
+  for (const [name, borough] of Object.entries(BOROUGH_NAMES)) {
+    if (lower.includes(name)) return borough;
+  }
+  return null;
+}
+
 function stableOffset(jobId: string): [number, number] {
   let h = 0;
   for (let i = 0; i < jobId.length; i++) h = (h << 5) - h + jobId.charCodeAt(i);
@@ -28,15 +44,15 @@ function stableOffset(jobId: string): [number, number] {
 }
 
 function getStopPosition(stop: RoutePoint): [number, number] {
-  if (stop.lat != null && stop.lng != null) return [stop.lat, stop.lng];
-  const [lat, lng] = BOROUGH_CENTERS[stop.borough] ?? NYC_CENTER;
+  const borough = stop.borough ?? parseBoroughFromAddress(stop.address ?? '');
+  const [lat, lng] = (borough && BOROUGH_CENTERS[borough]) ? BOROUGH_CENTERS[borough] : NYC_CENTER;
   const [doff, loff] = stableOffset(stop.jobId);
   return [lat + doff, lng + loff];
 }
 
 function markerColor(status: JobStatus): string {
   if (status === 'COMPLETED') return '#22c55e';
-  if (status === 'IN_PROGRESS') return '#f59e0b';
+  if (status === 'IN_PROGRESS') return '#f97316';
   return '#3b82f6';
 }
 
@@ -47,10 +63,10 @@ function createMarkerIcon(
   isHighlightJob: boolean
 ): L.DivIcon {
   const color = markerColor(status);
-  const size = isHighlightJob ? 28 : isCurrent ? 24 : 18;
-  const pulse = isCurrent ? ' leaflet-marker-pulsing' : '';
+  const size = isHighlightJob ? 28 : status === 'IN_PROGRESS' && isCurrent ? 28 : 24;
+  const pulse = status === 'IN_PROGRESS' && isCurrent ? ' leaflet-marker-pulsing' : '';
   return L.divIcon({
-    html: `<div class="leaflet-marker-pin${pulse}" style="width:${size}px;height:${size}px;background:${color};border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${size * 0.5}px;font-weight:700;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);">${sequence + 1}</div>`,
+    html: `<div class="leaflet-marker-pin${pulse}" style="width:${size}px;height:${size}px;background:${color};border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);">${sequence}</div>`,
     className: 'custom-marker',
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
@@ -82,8 +98,8 @@ export function LeafletMap({ stops, currentStopIndex, highlightJobId, onStopClic
     <MapContainer
       center={NYC_CENTER}
       zoom={11}
-      className="h-full w-full rounded"
-      style={{ minHeight: 200 }}
+      className="h-full w-full rounded min-h-[300px]"
+      style={{ minHeight: 300 }}
       scrollWheelZoom
     >
       <TileLayer
@@ -92,7 +108,7 @@ export function LeafletMap({ stops, currentStopIndex, highlightJobId, onStopClic
       />
       <CenterOnIndex centerOnIndex={centerOnIndex ?? null} positions={positions} />
       {positions.length > 1 && (
-        <Polyline positions={positions} pathOptions={{ color: '#f59e0b', weight: 4 }} />
+        <Polyline positions={positions} pathOptions={{ color: '#f97316', weight: 4 }} />
       )}
       {stops.map((stop, idx) => {
         const pos = positions[idx];

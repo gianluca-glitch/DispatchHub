@@ -51,7 +51,7 @@ export function RouteMapPanel({ jobId, truckId, truckName, date }: RouteMapPanel
             <p className="text-xs text-text-3 mt-0.5">
               {completedCount}/{total} stops · {pct}%
             </p>
-            <div className="mt-1.5 h-1.5 w-full rounded-full bg-surface-2 overflow-hidden">
+            <div className="mt-1.5 h-1 w-full rounded-full bg-surface-2 overflow-hidden">
               <div
                 className="h-full rounded-full bg-success transition-all duration-300"
                 style={{ width: `${pct}%` }}
@@ -63,7 +63,7 @@ export function RouteMapPanel({ jobId, truckId, truckName, date }: RouteMapPanel
         )}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col min-h-[200px]">
+      <div className="flex-1 min-h-0 flex flex-col">
         {routesLoading ? (
           <div className="flex-1 flex items-center justify-center text-text-3 text-sm">Loading route…</div>
         ) : stops.length === 0 ? (
@@ -71,8 +71,8 @@ export function RouteMapPanel({ jobId, truckId, truckName, date }: RouteMapPanel
             No stops for this truck on this date.
           </div>
         ) : (
-          <div className="flex-1 min-h-0 flex flex-col">
-            <div className="flex-1 min-h-[200px] shrink-0">
+          <>
+            <div className="min-h-0 flex-[0.65] shrink-0 border-b border-border">
               <LeafletMap
                 stops={stops}
                 currentStopIndex={currentIdx}
@@ -81,7 +81,7 @@ export function RouteMapPanel({ jobId, truckId, truckName, date }: RouteMapPanel
                 centerOnIndex={centerOnIndex}
               />
             </div>
-            <div className="shrink-0 border-t border-border overflow-y-auto max-h-48">
+            <div className="flex-[0.35] min-h-0 shrink-0 overflow-y-auto">
               <ul className="p-2 space-y-0">
                 {stops.map((stop: RoutePoint, idx: number) => {
                   const isCurrent = idx === currentIdx && stop.status !== 'COMPLETED';
@@ -123,7 +123,7 @@ export function RouteMapPanel({ jobId, truckId, truckName, date }: RouteMapPanel
                 })}
               </ul>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>

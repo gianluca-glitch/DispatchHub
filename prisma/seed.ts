@@ -9,19 +9,22 @@ const db = new PrismaClient();
 const DEPOT_ADDRESS = '31-10 Harper St, Flushing, NY';
 const DEPOT_COORDS = [-73.8332, 40.7678] as [number, number];
 
-function todayDateOnly(): Date {
+// Today at noon local to avoid timezone edge cases when comparing dates
+function todayNoon(): Date {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  d.setHours(12, 0, 0, 0);
+  return d;
 }
 
 function todayIso(): string {
-  return todayDateOnly().toISOString().slice(0, 10);
+  return todayNoon().toISOString().slice(0, 10);
 }
 
 async function main() {
-  const today = todayDateOnly();
+  const today = todayNoon();
+  const todayISO = today.toISOString().slice(0, 10);
   console.log('🌱 Seeding DispatchHub database...');
-  console.log(`   Demo date: ${today.toISOString().slice(0, 10)}`);
+  console.log(`   Demo date: ${todayISO}`);
 
   // ── CLEAR ─────────────────────────────────────────────────
   await db.routeStop.deleteMany();
@@ -151,10 +154,8 @@ async function main() {
 
   console.log(`  ✅ 3 projects with assignments`);
 
-  // ── JOBS (8 total, all dated TODAY) ────────────────────────
-  // 2 Manhattan, 2 Brooklyn, 1 Queens, 1 Bronx, 1 Staten Island, 1 unassigned
-  // Statuses: 3 SCHEDULED, 2 DELAYED, 1 IN_PROGRESS, 1 COMPLETED (schema has no EN_ROUTE)
-  // Times: 06:00, 06:30, 07:00, 08:00, 09:00, 10:00, 11:00
+  // ── JOBS (all dated TODAY at noon local; 2–3 jobs per truck for map variety) ──
+  // Boroughs must match address: Manhattan → MANHATTAN, Brooklyn → BROOKLYN, etc.
   const jobsData: Array<{
     type: 'PICKUP' | 'DROP_OFF' | 'DUMP_OUT' | 'SWAP';
     customer: string;
@@ -171,13 +172,21 @@ async function main() {
     status?: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'DELAYED';
     projectId?: string;
   }> = [
+    // Box Truck 5: 3 stops — Manhattan x2, Brooklyn x1
     { type: 'PICKUP', customer: 'Manhattan Tower Group', address: '450 W 33rd St, Manhattan', borough: 'MANHATTAN', date: today, time: '06:00', truckId: trucks['Box Truck 5'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '30yd', status: 'SCHEDULED', notes: 'Demolition debris pickup — rear entrance' },
     { type: 'SWAP', customer: 'Metro Demo Group', address: '138 W 138th St, Manhattan', borough: 'MANHATTAN', date: today, time: '07:00', truckId: trucks['Box Truck 5'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'HIGH', containerSize: '30yd', status: 'DELAYED', projectId: bloomberg.id, notes: 'Dumpster swap — Bloomberg project' },
-    { type: 'DROP_OFF', customer: 'BK Construction LLC', address: '789 Flatbush Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '06:30', truckId: trucks['Container 13'].id, driverId: workers['Ray Jimenez'].id, source: 'EMAIL', priority: 'HIGH', containerSize: '20yd', status: 'SCHEDULED', notes: 'Container delivery' },
     { type: 'PICKUP', customer: 'Harbor View Development', address: '310 Flatbush Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '08:00', truckId: trucks['Box Truck 5'].id, driverId: workers['Tony Russo'].id, source: 'FORM', priority: 'NORMAL', containerSize: '30yd', status: 'DELAYED', notes: 'Scheduled pickup — Prospect Heights' },
+    // Container 13: 3 stops — Brooklyn, Queens
+    { type: 'DROP_OFF', customer: 'BK Construction LLC', address: '789 Flatbush Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '06:30', truckId: trucks['Container 13'].id, driverId: workers['Ray Jimenez'].id, source: 'EMAIL', priority: 'HIGH', containerSize: '20yd', status: 'SCHEDULED', notes: 'Container delivery' },
     { type: 'DUMP_OUT', customer: 'Queens Boulevard Partners', address: '61-15 Queens Blvd, Woodside, NY', borough: 'QUEENS', date: today, time: '09:00', truckId: trucks['Container 13'].id, driverId: workers['Ray Jimenez'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '30yd', status: 'IN_PROGRESS', notes: 'Demolition project haul — gate code 4455' },
+    { type: 'PICKUP', customer: 'Astoria Demo LLC', address: '28-15 Astoria Blvd, Queens', borough: 'QUEENS', date: today, time: '11:00', truckId: trucks['Container 13'].id, driverId: workers['Ray Jimenez'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Astoria pickup' },
+    // Roll Off 10: 2 stops — Bronx, Staten Island
     { type: 'DROP_OFF', customer: 'Bronx Hauling Co', address: '2100 Bronx Park East, Bronx', borough: 'BRONX', date: today, time: '10:00', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'FORM', priority: 'URGENT', containerSize: '40yd', status: 'SCHEDULED', projectId: apex.id, notes: 'Roll-off delivery — Apex site' },
+    { type: 'PICKUP', customer: 'SI Waste Solutions', address: '300 Father Capodanno Blvd, Staten Island', borough: 'STATEN_ISLAND', date: today, time: '14:00', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '40yd', status: 'SCHEDULED', notes: 'Staten Island roll-off' },
+    // Packer 07: 2 stops — Staten Island, Bronx
     { type: 'PICKUP', customer: 'SI Waste Solutions', address: '300 Father Capodanno Blvd, Staten Island', borough: 'STATEN_ISLAND', date: today, time: '11:00', truckId: trucks['Packer 07'].id, driverId: workers['Carlos Vega'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'COMPLETED', notes: 'Bulk waste pickup' },
+    { type: 'DROP_OFF', customer: 'Bronx Hauling Co', address: '950 Garrison Ave, Bronx', borough: 'BRONX', date: today, time: '13:00', truckId: trucks['Packer 07'].id, driverId: workers['Carlos Vega'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Garrison Ave drop' },
+    // Unassigned
     { type: 'PICKUP', customer: 'Williamsburg Collective', address: '120 N 6th St, Brooklyn', borough: 'BROOKLYN', date: today, time: '12:00', source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', projectId: wburg.id, notes: 'Unassigned — pending intake approval' },
   ];
 
@@ -203,7 +212,7 @@ async function main() {
     });
     if (job.truckId) createdJobs.push({ id: job.id, truckId: job.truckId, time: j.time });
   }
-  console.log(`  ✅ ${jobsData.length} jobs (7 assigned, 1 unassigned)`);
+  console.log(`  ✅ ${jobsData.length} jobs (assigned trucks have 2–3 stops each, 1 unassigned)`);
 
   // ── ROUTES (for trucks with jobs today) ────────────────────
   const jobsByTruck = new Map<string, typeof createdJobs>();
@@ -246,7 +255,7 @@ async function main() {
   console.log(`  ✅ Routes with stops for ${jobsByTruck.size} trucks`);
 
   // ── INTAKE ITEMS ──────────────────────────────────────────
-  const todayStr = todayIso();
+  const todayStr = todayISO;
   await db.intakeItem.createMany({ data: [
     {
       source: 'PHONE', rawContent: 'Hi, this is Maria from Manhattan Tower Group. We need a 30-yard container picked up from 450 West 33rd Street tomorrow morning, preferably before 8am.',
