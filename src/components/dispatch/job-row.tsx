@@ -15,7 +15,10 @@ import { cn } from '@/lib/utils';
 export interface JobRowProps {
   job: CartingJob;
   onClick: () => void;
+  onDoubleClick?: () => void;
   highlighted?: boolean;
+  /** When set, show a left border with this color (e.g. when route card is hovered) */
+  highlightBorderColor?: string | null;
 }
 
 const JOB_TYPE_PILL: Record<JobType, string> = {
@@ -48,7 +51,7 @@ const PRIORITY_BADGE: Record<Priority, string> = {
   URGENT: 'bg-danger/15 text-danger border-danger/40',
 };
 
-export function JobRow({ job, onClick, highlighted }: JobRowProps) {
+export function JobRow({ job, onClick, onDoubleClick, highlighted, highlightBorderColor }: JobRowProps) {
   const time = job.time || '—';
   const customer = job.customer || '—';
   const address = job.address || '—';
@@ -58,11 +61,21 @@ export function JobRow({ job, onClick, highlighted }: JobRowProps) {
   return (
     <tr
       data-job-id={job.id}
+      tabIndex={0}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onDoubleClick?.();
+        }
+      }}
       className={cn(
         'border-b border-border hover:bg-surface-1 cursor-pointer transition-colors',
-        highlighted && 'bg-amber/10 ring-inset ring-1 ring-amber/30'
+        highlighted && 'bg-amber/10 ring-inset ring-1 ring-amber/30',
+        highlightBorderColor && 'border-l-4'
       )}
+      style={highlightBorderColor ? { borderLeftColor: highlightBorderColor } : undefined}
     >
       <td className="py-2.5 pl-4 pr-2 font-mono text-sm text-text-1 whitespace-nowrap">
         {time}

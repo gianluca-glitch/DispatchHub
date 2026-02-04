@@ -16,19 +16,31 @@ export async function GET(req: NextRequest) {
   const startOfDay = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
   const endOfDay = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999));
 
-  const jobs = await db.cartingJob.findMany({
-    where: {
-      date: { gte: startOfDay, lte: endOfDay },
-      status: { notIn: ['CANCELLED'] },
-      truckId: { not: null },
-    },
-    include: {
-      truck: { include: { assignedDriver: true } },
-      driver: true,
-      workers: { include: { worker: true } },
-    },
-    orderBy: { time: 'asc' },
-  });
+  const [assignedJobs, unassignedJobs] = await Promise.all([
+    db.cartingJob.findMany({
+      where: {
+        date: { gte: startOfDay, lte: endOfDay },
+        status: { notIn: ['CANCELLED'] },
+        truckId: { not: null },
+      },
+      include: {
+        truck: { include: { assignedDriver: true } },
+        driver: true,
+        workers: { include: { worker: true } },
+      },
+      orderBy: { time: 'asc' },
+    }),
+    db.cartingJob.findMany({
+      where: {
+        date: { gte: startOfDay, lte: endOfDay },
+        status: { notIn: ['CANCELLED'] },
+        truckId: null,
+      },
+      orderBy: { time: 'asc' },
+    }),
+  ]);
+
+  const jobs = assignedJobs;
 
   // Group by truckId
   const byTruck = new Map<string | null, typeof jobs>();
@@ -86,5 +98,13 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ data: routes });
+  const unassigned = unassignedJobs.map((j) => ({
+    jobId: j.id,
+    time: j.time,
+    customer: j.customer,
+    address: j.address,
+    borough: j.borough,
+  }));
+
+  return NextResponse.json({ data: routes, routes, unassigned });
 }
