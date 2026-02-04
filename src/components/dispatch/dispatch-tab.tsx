@@ -6,7 +6,7 @@ import { useDispatchStore, useCommandCenterStore } from '@/stores';
 import { useJobs } from '@/hooks';
 import { JobRow } from './job-row';
 import { JobDashboard } from './job-dashboard';
-import { CommandCenter } from './command-center';
+import { ScenarioPanel } from './scenario-panel';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -50,10 +50,15 @@ export function DispatchTab() {
     return { total, completed, inProgress, delayed };
   }, [jobs]);
 
+  const showFloatingScenario = useCommandCenterStore((s) => s.showFloatingScenario);
+  const scenarioResult = useCommandCenterStore((s) => s.scenarioResult);
+  const setShowFloatingScenario = useCommandCenterStore((s) => s.setShowFloatingScenario);
+  const clearScenario = useCommandCenterStore((s) => s.clearScenario);
+
   return (
-    <div className="flex flex-col xl:flex-row gap-4 h-[calc(100vh-8rem)]">
-      {/* Left 55% — Date, stats, job table */}
-      <div className="flex-1 flex flex-col min-w-0 xl:max-w-[55%]">
+    <div className="flex flex-col h-[calc(100vh-8rem)]">
+      {/* Full width — Date, stats, job table */}
+      <div className="flex-1 flex flex-col min-w-0 w-full">
         {/* Date picker */}
         <div className="flex items-center gap-2 mb-4">
           <Button
@@ -130,21 +135,36 @@ export function DispatchTab() {
         </div>
       </div>
 
-      {/* Right 45% — Command Center */}
-      <div className="flex flex-col min-w-0 xl:w-[45%] xl:shrink-0 h-[calc(100vh-8rem)] xl:max-h-[calc(100vh-8rem)]">
-        <CommandCenter
-          selectedDate={selectedDate}
-          onJobSelect={() => {}}
-          onApplied={refetchJobs}
-        />
-      </div>
-
-      {/* Job dashboard modal */}
+      {/* Job dashboard modal (includes route map + scenario panel when open) */}
       <JobDashboard
         jobId={selectedJobId}
         date={selectedDate}
         onClose={() => setSelectedJobId(null)}
+        onApplied={refetchJobs}
       />
+
+      {/* Floating scenario panel when no job dashboard is open */}
+      {showFloatingScenario && scenarioResult && !selectedJobId && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-[480px] w-full bg-surface-0 border border-border rounded shadow-lg flex flex-col max-h-[70vh] overflow-hidden">
+          <div className="flex items-center justify-between p-2 border-b border-border shrink-0">
+            <span className="text-sm font-medium text-text-0">Scenario result</span>
+            <button
+              type="button"
+              onClick={() => {
+                clearScenario();
+                setShowFloatingScenario(false);
+              }}
+              className="p-1.5 rounded text-text-3 hover:text-text-0 hover:bg-surface-2"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+          <div className="overflow-y-auto p-3">
+            <ScenarioPanel selectedDate={selectedDate} onApplied={refetchJobs} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

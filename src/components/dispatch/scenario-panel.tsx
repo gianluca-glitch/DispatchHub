@@ -1,17 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Truck, User, RefreshCw, AlertTriangle, ChevronDown, Check, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Check, X } from 'lucide-react';
 import { useCommandCenterStore } from '@/stores';
 import { useTrucks, useWorkers } from '@/hooks';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import type { ScenarioInput, ScenarioResult } from '@/types';
+import type { ScenarioResult } from '@/types';
 import { cn } from '@/lib/utils';
 
 export interface ScenarioPanelProps {
@@ -46,8 +40,6 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
     setScenario,
     setScenarioResult,
     setScenarioLoading,
-    highlightedJobId,
-    selectedCards,
     reset,
   } = useCommandCenterStore();
 
@@ -62,7 +54,7 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
   const isActive = activeScenario != null;
   const hasResult = scenarioResult != null;
 
-  // When activeScenario is set, run analysis
+  // When activeScenario is set (e.g. from AI fix options in job dashboard), run analysis
   useEffect(() => {
     if (!activeScenario || !selectedDate) return;
     setScenarioLoading(true);
@@ -79,41 +71,6 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
       })
       .finally(() => setScenarioLoading(false));
   }, [activeScenario, selectedDate, setScenarioResult, setScenarioLoading]);
-
-  const handleTruckDown = (truckId: string) => {
-    setScenario({ type: 'TRUCK_DOWN', affectedTruckId: truckId });
-  };
-
-  const handleWorkerSick = (workerId: string) => {
-    setScenario({ type: 'WORKER_SICK', affectedWorkerId: workerId });
-  };
-
-  const handleSwapTruck = () => {
-    if (highlightedJobId && selectedCards.truckId) {
-      setScenario({
-        type: 'SWAP_TRUCK',
-        affectedJobId: highlightedJobId,
-        replacementTruckId: selectedCards.truckId,
-      });
-    } else if (highlightedJobId) {
-      setScenario({ type: 'SWAP_TRUCK', affectedJobId: highlightedJobId });
-    }
-  };
-
-  const handleSwapDriver = () => {
-    if (highlightedJobId && selectedCards.driverId) {
-      setScenario({
-        type: 'SWAP_DRIVER',
-        affectedJobId: highlightedJobId,
-        replacementDriverId: selectedCards.driverId,
-      });
-    } else if (highlightedJobId) {
-      setScenario({ type: 'SWAP_DRIVER', affectedJobId: highlightedJobId });
-    }
-  };
-
-  const canSwapTruck = !!highlightedJobId;
-  const canSwapDriver = !!highlightedJobId;
 
   const handleApply = async () => {
     if (!scenarioResult?.unassignedJobs?.length) return;
@@ -171,87 +128,8 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
         isActive ? 'flex-1 min-h-0' : ''
       )}
     >
-      {/* Trigger row */}
-      <div className="flex flex-wrap items-center gap-2 p-3 border-b border-border shrink-0">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="border-danger/50 text-danger hover:bg-danger/10"
-            >
-              <Truck className="h-3.5 w-3.5 mr-1" />
-              Truck Down
-              <ChevronDown className="h-3 w-3 ml-1" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="bg-surface-1 border-border">
-            {trucks.map((t) => (
-              <DropdownMenuItem
-                key={t.id}
-                onClick={() => handleTruckDown(t.id)}
-                className="text-text-0"
-              >
-                {t.name}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="border-amber/50 text-amber hover:bg-amber/10"
-            >
-              <User className="h-3.5 w-3.5 mr-1" />
-              Worker Sick
-              <ChevronDown className="h-3 w-3 ml-1" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="bg-surface-1 border-border">
-            {workers.map((w) => (
-              <DropdownMenuItem
-                key={w.id}
-                onClick={() => handleWorkerSick(w.id)}
-                className="text-text-0"
-              >
-                {w.name}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="border-info/50 text-info hover:bg-info/10"
-          disabled={!canSwapTruck}
-          onClick={handleSwapTruck}
-        >
-          <RefreshCw className="h-3.5 w-3.5 mr-1" />
-          Swap Truck
-        </Button>
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="border-info/50 text-info hover:bg-info/10"
-          disabled={!canSwapDriver}
-          onClick={handleSwapDriver}
-        >
-          <User className="h-3.5 w-3.5 mr-1" />
-          Swap Driver
-        </Button>
-      </div>
-
-      {/* Results area — expands when scenario active */}
-      {isActive && (
+      {/* Results only — scenarios triggered via AI command input */}
+      {(isActive || hasResult) && (
         <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
           {scenarioLoading && (
             <div className="flex items-center justify-center py-8 text-text-3 text-sm">

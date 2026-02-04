@@ -100,6 +100,7 @@ export async function parseVoiceIntent(transcript: string, currentScheduleContex
 The dispatcher speaks naturally and you need to extract the intent.
 
 Possible intents:
+- TRUCK_DOWN: truck is out of service (broke, down, out)
 - MARK_SICK: worker is out sick, remove from schedule
 - RESCHEDULE: move a job to a different date/time
 - ADD_NOTE: add a note to a job
@@ -114,6 +115,7 @@ Return ONLY valid JSON:
   "entities": {
     "workerName": string | null,
     "jobIdentifier": string | null,
+    "truckName": string | null,
     "date": string | null,
     "time": string | null,
     "note": string | null,

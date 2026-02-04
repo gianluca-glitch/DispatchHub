@@ -128,6 +128,7 @@ interface CommandCenterStore {
   scenarioResult: ScenarioResult | null;
   scenarioLoading: boolean;
   scenarioHistory: { input: ScenarioInput; result: ScenarioResult }[];
+  showFloatingScenario: boolean;
 
   selectedCards: { truckId: string | null; driverId: string | null; workerIds: string[] };
   previewJobId: string | null;
@@ -140,6 +141,8 @@ interface CommandCenterStore {
   setScenario: (scenario: ScenarioInput | null) => void;
   setScenarioResult: (result: ScenarioResult | null) => void;
   setScenarioLoading: (loading: boolean) => void;
+  setShowFloatingScenario: (show: boolean) => void;
+  clearScenario: () => void;
   pushScenarioHistory: (input: ScenarioInput, result: ScenarioResult) => void;
 
   selectCard: (type: 'truck' | 'driver' | 'worker', id: string) => void;
@@ -157,6 +160,7 @@ const defaultCommandCenter = {
   scenarioResult: null as ScenarioResult | null,
   scenarioLoading: false,
   scenarioHistory: [] as { input: ScenarioInput; result: ScenarioResult }[],
+  showFloatingScenario: false,
   selectedCards: { truckId: null as string | null, driverId: null as string | null, workerIds: [] as string[] },
   previewJobId: null as string | null,
 };
@@ -177,6 +181,14 @@ export const useCommandCenterStore = create<CommandCenterStore>((set, get) => ({
   setScenario: (scenario) => set({ activeScenario: scenario }),
   setScenarioResult: (result) => set({ scenarioResult: result }),
   setScenarioLoading: (loading) => set({ scenarioLoading: loading }),
+  setShowFloatingScenario: (show) => set({ showFloatingScenario: show }),
+  clearScenario: () =>
+    set({
+      scenarioResult: null,
+      showFloatingScenario: false,
+      activeScenario: null,
+      scenarioLoading: false,
+    }),
   pushScenarioHistory: (input, result) =>
     set((state) => ({
       scenarioHistory: [...state.scenarioHistory, { input, result }],

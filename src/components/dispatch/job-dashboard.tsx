@@ -17,7 +17,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ConflictBannerList } from './conflict-banner';
-import { useJob, useConflicts, useWorkers, useTrucks } from '@/hooks';
+import { RouteMap } from './route-map';
+import { ScenarioPanel } from './scenario-panel';
+import { useJob, useConflicts, useWorkers, useTrucks, useRoutes } from '@/hooks';
 import { useDispatchStore, useCommandCenterStore } from '@/stores';
 import {
   JOB_TYPE_LABELS,
@@ -40,6 +42,7 @@ export interface JobDashboardProps {
   jobId: string | null;
   date: string;
   onClose: () => void;
+  onApplied?: () => void;
 }
 
 // Normalize job date from API (ISO or YYYY-MM-DD)
@@ -55,7 +58,7 @@ const JOB_STATUSES: JobStatus[] = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CAN
 const PRIORITIES: Priority[] = ['NORMAL', 'HIGH', 'URGENT'];
 const BOROUGHS: Borough[] = ['MANHATTAN', 'BROOKLYN', 'QUEENS', 'BRONX', 'STATEN_ISLAND'];
 
-export function JobDashboard({ jobId, date, onClose }: JobDashboardProps) {
+export function JobDashboard({ jobId, date, onClose, onApplied }: JobDashboardProps) {
   const { data: job, loading: jobLoading, refetch: refetchJob } = useJob(jobId);
   const { data: conflictsData, refetch: refetchConflicts } = useConflicts(jobId, date);
   const conflicts = conflictsData ?? [];
@@ -63,6 +66,15 @@ export function JobDashboard({ jobId, date, onClose }: JobDashboardProps) {
   const workers = workersData ?? [];
   const { data: trucksData } = useTrucks();
   const trucks = trucksData ?? [];
+  const { data: routesData } = useRoutes(date);
+  const allRoutes = routesData ?? [];
+  const jobTruckRoute = job?.truckId
+    ? allRoutes.filter((r) => r.truckId === job.truckId)
+    : [];
+
+  const scenarioResult = useCommandCenterStore((s) => s.scenarioResult);
+  const scenarioLoading = useCommandCenterStore((s) => s.scenarioLoading);
+  const activeScenario = useCommandCenterStore((s) => s.activeScenario);
 
   const [recommendations, setRecommendations] = useState<AiWorkerRecommendation[]>([]);
   const [recLoading, setRecLoading] = useState(false);
@@ -157,7 +169,7 @@ export function JobDashboard({ jobId, date, onClose }: JobDashboardProps) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col bg-surface-0 border-border">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col bg-surface-0 border-border">
         <DialogHeader>
           <DialogTitle className="text-text-0">Job details</DialogTitle>
         </DialogHeader>
@@ -167,9 +179,12 @@ export function JobDashboard({ jobId, date, onClose }: JobDashboardProps) {
             <Loader2 className="h-8 w-8 animate-spin text-amber" />
           </div>
         ) : (
-          <div className="flex flex-col gap-4 overflow-y-auto pr-2">
-            {/* Conflict banners */}
-            <ConflictBannerList conflicts={conflicts} />
+          <div className="flex flex-col gap-4 min-h-0 flex-1 overflow-hidden">
+            {/* 60/40: job details left, route map right */}
+            <div className="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-4 min-h-0 flex-1">
+              <div className="flex flex-col gap-4 overflow-y-auto pr-2 min-h-0">
+                {/* Conflict banners */}
+                <ConflictBannerList conflicts={conflicts} />
 
             {/* AI fix options */}
             {conflicts.length > 0 && (
@@ -495,7 +510,32 @@ export function JobDashboard({ jobId, date, onClose }: JobDashboardProps) {
                   ))}
                 </div>
               )}
+              </div>
+              </div>
+
+              {/* Right: route map for this truck's day */}
+              <div className="min-h-[280px] border border-border rounded bg-surface-0 overflow-hidden flex flex-col">
+                <h4 className="text-xs font-semibold text-text-2 uppercase tracking-wider px-3 py-2 border-b border-border shrink-0">
+                  Route — {job.truck?.name ?? 'Unassigned'}
+                </h4>
+                <div className="flex-1 min-h-0 p-2">
+                  {jobTruckRoute.length > 0 ? (
+                    <RouteMap routes={jobTruckRoute} selectedDate={date} />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-text-3 text-sm">
+                      No route for this truck on this date
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
+
+            {/* Scenario results below when present */}
+            {(scenarioResult || scenarioLoading || activeScenario) && (
+              <div className="border-t border-border pt-3 shrink-0">
+                <ScenarioPanel selectedDate={date} onApplied={() => { onApplied?.(); refetchAll(); }} />
+              </div>
+            )}
           </div>
         )}
       </DialogContent>
