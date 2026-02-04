@@ -1,12 +1,27 @@
 // DispatchHub — Database Seed
 // Run: pnpm db:seed
-// Seeds all 18 trucks, 16 workers, sample jobs, projects, and intake items
+// Seeds all 18 trucks, 16 workers, sample jobs, projects, routes, and intake items
 
 import { PrismaClient } from '@prisma/client';
 const db = new PrismaClient();
 
+// EDCC yard — depot for all routes
+const DEPOT_ADDRESS = '31-10 Harper St, Flushing, NY';
+const DEPOT_COORDS = [-73.8332, 40.7678] as [number, number];
+
+function todayDateOnly(): Date {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function todayIso(): string {
+  return todayDateOnly().toISOString().slice(0, 10);
+}
+
 async function main() {
+  const today = todayDateOnly();
   console.log('🌱 Seeding DispatchHub database...');
+  console.log(`   Demo date: ${today.toISOString().slice(0, 10)}`);
 
   // ── CLEAR ─────────────────────────────────────────────────
   await db.routeStop.deleteMany();
@@ -81,11 +96,16 @@ async function main() {
   console.log(`  ✅ ${workerData.length} workers`);
 
   // ── PROJECTS ──────────────────────────────────────────────
+  const pStart = new Date(today);
+  pStart.setDate(pStart.getDate() - 14);
+  const pEnd = new Date(today);
+  pEnd.setDate(pEnd.getDate() + 45);
+
   const bloomberg = await db.demoProject.create({
     data: {
       name: 'Bloomberg Tower Demo', customer: 'Metro Demo Group',
       address: '138 W 138th St, Manhattan', borough: 'MANHATTAN',
-      phase: 'ACTIVE_DEMO', startDate: new Date('2026-01-20'), endDate: new Date('2026-03-15'),
+      phase: 'ACTIVE_DEMO', startDate: pStart, endDate: pEnd,
       cartingNeeds: '3x 30yd containers, daily dump-outs, asbestos abatement hauling',
       notes: 'High-profile project. Asbestos found on floors 4-6. Extended timeline.',
     },
@@ -95,7 +115,7 @@ async function main() {
     data: {
       name: 'Apex Bronx Teardown', customer: 'Apex Construction Corp',
       address: '2100 Bronx Park East, Bronx', borough: 'BRONX',
-      phase: 'CARTING', startDate: new Date('2026-01-10'), endDate: new Date('2026-02-28'),
+      phase: 'CARTING', startDate: pStart, endDate: new Date(today.getTime() + 21 * 86400000),
       cartingNeeds: '2x 40yd roll-off, debris hauling 3x/week',
       notes: 'Structural demo complete. Carting phase — heavy debris removal.',
     },
@@ -103,9 +123,9 @@ async function main() {
 
   const wburg = await db.demoProject.create({
     data: {
-      name: 'Williamsburg Gut Reno', customer: 'Williamsburg Collective',
+      name: 'Williamsburg Gut Reno', customer: 'BK Construction LLC',
       address: '120 N 6th St, Brooklyn', borough: 'BROOKLYN',
-      phase: 'PLANNING', startDate: new Date('2026-02-10'), endDate: new Date('2026-04-01'),
+      phase: 'PLANNING', startDate: new Date(today.getTime() + 7 * 86400000), endDate: new Date(today.getTime() + 60 * 86400000),
       cartingNeeds: '1x 20yd container on-site, weekly swap',
       notes: 'Pending permits. Start date may shift.',
     },
@@ -131,39 +151,117 @@ async function main() {
 
   console.log(`  ✅ 3 projects with assignments`);
 
-  // ── JOBS ──────────────────────────────────────────────────
-  const jobsData = [
-    { type: 'PICKUP' as const, customer: 'Greenfield Holdings', address: '450 W 33rd St', borough: 'MANHATTAN' as const, date: new Date('2026-02-02'), time: '07:00', truckId: trucks['Box Truck 5'].id, driverId: workers['Tony Russo'].id, source: 'PHONE' as const, priority: 'NORMAL' as const, containerSize: '30yd', notes: 'Rear entrance only' },
-    { type: 'DROP_OFF' as const, customer: 'BK Developers LLC', address: '789 Flatbush Ave', borough: 'BROOKLYN' as const, date: new Date('2026-02-02'), time: '08:30', truckId: trucks['Container 13'].id, driverId: workers['Ray Jimenez'].id, source: 'EMAIL' as const, priority: 'HIGH' as const, containerSize: '20yd' },
-    { type: 'DUMP_OUT' as const, customer: 'Queens Boulevard Partners', address: '61-15 Queens Blvd', borough: 'QUEENS' as const, date: new Date('2026-02-02'), time: '06:30', truckId: trucks['Packer 07'].id, driverId: workers['Carlos Vega'].id, source: 'PHONE' as const, priority: 'NORMAL' as const, status: 'IN_PROGRESS' as const, notes: 'Gate code 4455' },
-    { type: 'SWAP' as const, customer: 'Apex Construction Corp', address: '2100 Bronx Park East', borough: 'BRONX' as const, date: new Date('2026-02-02'), time: '09:00', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'FORM' as const, priority: 'URGENT' as const, containerSize: '40yd', projectId: apex.id },
-    { type: 'PICKUP' as const, customer: 'SI Waste Solutions', address: '300 Father Capodanno Blvd', borough: 'STATEN_ISLAND' as const, date: new Date('2026-02-02'), time: '10:00', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'PHONE' as const, priority: 'NORMAL' as const, containerSize: '20yd' },
-    { type: 'DROP_OFF' as const, customer: 'Metro Demo Group', address: '138 W 138th St', borough: 'MANHATTAN' as const, date: new Date('2026-02-02'), time: '11:00', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'EMAIL' as const, priority: 'HIGH' as const, containerSize: '30yd', notes: 'Bloomberg project — north side drop', projectId: bloomberg.id },
-    { type: 'PICKUP' as const, customer: 'Harbor Freight Demo', address: '55 Water St', borough: 'MANHATTAN' as const, date: new Date('2026-02-02'), time: '06:00', truckId: trucks['Packer 24'].id, driverId: workers['Andre Williams'].id, source: 'PHONE' as const, priority: 'NORMAL' as const, status: 'COMPLETED' as const },
-    { type: 'DUMP_OUT' as const, customer: 'Prospect Heights Co-op', address: '310 Flatbush Ave', borough: 'BROOKLYN' as const, date: new Date('2026-02-02'), time: '13:00', truckId: trucks['Box Truck 6'].id, driverId: workers['Tony Russo'].id, source: 'FORM' as const, priority: 'NORMAL' as const, containerSize: '20yd' },
+  // ── JOBS (8 total, all dated TODAY) ────────────────────────
+  // 2 Manhattan, 2 Brooklyn, 1 Queens, 1 Bronx, 1 Staten Island, 1 unassigned
+  // Statuses: 3 SCHEDULED, 2 DELAYED, 1 IN_PROGRESS, 1 COMPLETED (schema has no EN_ROUTE)
+  // Times: 06:00, 06:30, 07:00, 08:00, 09:00, 10:00, 11:00
+  const jobsData: Array<{
+    type: 'PICKUP' | 'DROP_OFF' | 'DUMP_OUT' | 'SWAP';
+    customer: string;
+    address: string;
+    borough: 'MANHATTAN' | 'BROOKLYN' | 'QUEENS' | 'BRONX' | 'STATEN_ISLAND';
+    date: Date;
+    time: string;
+    truckId?: string;
+    driverId?: string;
+    source: 'PHONE' | 'EMAIL' | 'FORM';
+    priority: 'NORMAL' | 'HIGH' | 'URGENT';
+    containerSize?: string;
+    notes?: string;
+    status?: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'DELAYED';
+    projectId?: string;
+  }> = [
+    { type: 'PICKUP', customer: 'Manhattan Tower Group', address: '450 W 33rd St, Manhattan', borough: 'MANHATTAN', date: today, time: '06:00', truckId: trucks['Box Truck 5'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '30yd', status: 'SCHEDULED', notes: 'Demolition debris pickup — rear entrance' },
+    { type: 'SWAP', customer: 'Metro Demo Group', address: '138 W 138th St, Manhattan', borough: 'MANHATTAN', date: today, time: '07:00', truckId: trucks['Box Truck 5'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'HIGH', containerSize: '30yd', status: 'DELAYED', projectId: bloomberg.id, notes: 'Dumpster swap — Bloomberg project' },
+    { type: 'DROP_OFF', customer: 'BK Construction LLC', address: '789 Flatbush Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '06:30', truckId: trucks['Container 13'].id, driverId: workers['Ray Jimenez'].id, source: 'EMAIL', priority: 'HIGH', containerSize: '20yd', status: 'SCHEDULED', notes: 'Container delivery' },
+    { type: 'PICKUP', customer: 'Harbor View Development', address: '310 Flatbush Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '08:00', truckId: trucks['Box Truck 5'].id, driverId: workers['Tony Russo'].id, source: 'FORM', priority: 'NORMAL', containerSize: '30yd', status: 'DELAYED', notes: 'Scheduled pickup — Prospect Heights' },
+    { type: 'DUMP_OUT', customer: 'Queens Boulevard Partners', address: '61-15 Queens Blvd, Woodside, NY', borough: 'QUEENS', date: today, time: '09:00', truckId: trucks['Container 13'].id, driverId: workers['Ray Jimenez'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '30yd', status: 'IN_PROGRESS', notes: 'Demolition project haul — gate code 4455' },
+    { type: 'DROP_OFF', customer: 'Bronx Hauling Co', address: '2100 Bronx Park East, Bronx', borough: 'BRONX', date: today, time: '10:00', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'FORM', priority: 'URGENT', containerSize: '40yd', status: 'SCHEDULED', projectId: apex.id, notes: 'Roll-off delivery — Apex site' },
+    { type: 'PICKUP', customer: 'SI Waste Solutions', address: '300 Father Capodanno Blvd, Staten Island', borough: 'STATEN_ISLAND', date: today, time: '11:00', truckId: trucks['Packer 07'].id, driverId: workers['Carlos Vega'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'COMPLETED', notes: 'Bulk waste pickup' },
+    { type: 'PICKUP', customer: 'Williamsburg Collective', address: '120 N 6th St, Brooklyn', borough: 'BROOKLYN', date: today, time: '12:00', source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', projectId: wburg.id, notes: 'Unassigned — pending intake approval' },
   ];
 
+  const createdJobs: Array<{ id: string; truckId: string | null; time: string }> = [];
   for (const j of jobsData) {
-    await db.cartingJob.create({ data: j });
+    const job = await db.cartingJob.create({
+      data: {
+        type: j.type,
+        customer: j.customer,
+        address: j.address,
+        borough: j.borough,
+        date: j.date,
+        time: j.time,
+        truckId: j.truckId ?? null,
+        driverId: j.driverId ?? null,
+        source: j.source,
+        priority: j.priority,
+        containerSize: j.containerSize ?? null,
+        notes: j.notes ?? null,
+        status: j.status ?? 'SCHEDULED',
+        projectId: j.projectId ?? null,
+      },
+    });
+    if (job.truckId) createdJobs.push({ id: job.id, truckId: job.truckId, time: j.time });
   }
-  console.log(`  ✅ ${jobsData.length} jobs`);
+  console.log(`  ✅ ${jobsData.length} jobs (7 assigned, 1 unassigned)`);
+
+  // ── ROUTES (for trucks with jobs today) ────────────────────
+  const jobsByTruck = new Map<string, typeof createdJobs>();
+  for (const j of createdJobs) {
+    if (!j.truckId) continue;
+    const list = jobsByTruck.get(j.truckId) ?? [];
+    list.push(j);
+    jobsByTruck.set(j.truckId, list);
+  }
+  for (const [truckId, truckJobs] of jobsByTruck) {
+    truckJobs.sort((a, b) => a.time.localeCompare(b.time));
+    const coords = [DEPOT_COORDS];
+    const route = await db.route.create({
+      data: {
+        truckId,
+        date: today,
+        optimizedPath: {
+          type: 'LineString',
+          coordinates: coords,
+          depot: DEPOT_ADDRESS,
+        },
+        totalDistance: 12 + truckJobs.length * 4,
+        totalDuration: 60 + truckJobs.length * 45,
+      },
+    });
+    for (let i = 0; i < truckJobs.length; i++) {
+      const eta = new Date(today);
+      const [h, m] = truckJobs[i].time.split(':').map(Number);
+      eta.setHours(h, m, 0, 0);
+      await db.routeStop.create({
+        data: {
+          routeId: route.id,
+          jobId: truckJobs[i].id,
+          sequence: i + 1,
+          eta,
+        },
+      });
+    }
+  }
+  console.log(`  ✅ Routes with stops for ${jobsByTruck.size} trucks`);
 
   // ── INTAKE ITEMS ──────────────────────────────────────────
+  const todayStr = todayIso();
   await db.intakeItem.createMany({ data: [
     {
-      source: 'PHONE', rawContent: 'Hi, this is Maria from Greenfield Holdings. We need a 30-yard container picked up from 450 West 33rd Street tomorrow morning, preferably before 8am.',
+      source: 'PHONE', rawContent: 'Hi, this is Maria from Manhattan Tower Group. We need a 30-yard container picked up from 450 West 33rd Street tomorrow morning, preferably before 8am.',
       audioUrl: '#', confidence: 95, status: 'PENDING',
-      parsedCustomer: 'Greenfield Holdings', parsedPhone: '212-555-0198', parsedServiceType: 'PICKUP', parsedAddress: '450 W 33rd St, Manhattan', parsedDate: '2026-02-02', parsedTime: '07:00', parsedContainerSize: '30yd', parsedNotes: 'Rear parking area, before 8am',
+      parsedCustomer: 'Manhattan Tower Group', parsedPhone: '212-555-0198', parsedServiceType: 'PICKUP', parsedAddress: '450 W 33rd St, Manhattan', parsedDate: todayStr, parsedTime: '07:00', parsedContainerSize: '30yd', parsedNotes: 'Rear parking area, before 8am',
     },
     {
       source: 'EMAIL', rawContent: 'Subject: Container Drop-off Request\nWe need a 20-yard dumpster dropped off at 789 Flatbush Ave, Brooklyn.',
       confidence: 88, status: 'NEEDS_REVIEW',
-      parsedCustomer: 'James Lee / BK Developers', parsedPhone: '347-555-0234', parsedEmail: 'james@bkdev.com', parsedServiceType: 'DROP_OFF', parsedAddress: '789 Flatbush Ave, Brooklyn', parsedDate: '2026-02-04', parsedContainerSize: '20yd',
+      parsedCustomer: 'BK Construction LLC', parsedPhone: '347-555-0234', parsedEmail: 'james@bkdev.com', parsedServiceType: 'DROP_OFF', parsedAddress: '789 Flatbush Ave, Brooklyn', parsedDate: todayStr, parsedContainerSize: '20yd',
     },
     {
       source: 'PHONE', rawContent: 'Yeah uh... we got a situation at the Grand Concourse site... need to swap out the container...',
       audioUrl: '#', confidence: 62, status: 'FLAGGED',
-      parsedCustomer: 'Fordham(?)', parsedPhone: '718-555-0444', parsedServiceType: 'SWAP', parsedAddress: 'Grand Concourse, Bronx(?)', parsedContainerSize: '40yd', parsedNotes: 'Container full, caller unclear on details',
+      parsedCustomer: 'Bronx Hauling Co', parsedPhone: '718-555-0444', parsedServiceType: 'SWAP', parsedAddress: 'Grand Concourse, Bronx', parsedContainerSize: '40yd', parsedNotes: 'Container full, caller unclear on details',
     },
   ]});
   console.log(`  ✅ 3 intake items`);
