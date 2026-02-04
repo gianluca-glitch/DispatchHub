@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { MessageSquare, PanelRightClose, PanelRightOpen, Send, Loader2 } from 'lucide-react';
 import { useCommandCenterStore } from '@/stores';
-import { useTrucks, useWorkers } from '@/hooks';
+import { useTrucks, useWorkers, useScheduleConflicts } from '@/hooks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { ScenarioResult } from '@/types';
@@ -76,6 +76,14 @@ function ScenarioCardInline({
   );
 }
 
+function conflictStatusMessage(conflicts: { message: string }[]): string {
+  if (conflicts.length === 0) {
+    return '✅ No scheduling conflicts for today. All clear.';
+  }
+  const lines = ['⚠️ Schedule conflicts detected for today:', ...conflicts.map((c) => `• ${c.message}`), 'Want me to suggest fixes?'];
+  return lines.join('\n');
+}
+
 export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
   const {
     sidebarOpen,
@@ -83,21 +91,38 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     sidebarMessages,
     addSidebarMessage,
     triggerDispatchRefetch,
+    dispatchRefetchTrigger,
   } = useCommandCenterStore();
 
   const { data: trucksData } = useTrucks();
   const { data: workersData } = useWorkers();
+  const { data: scheduleConflicts, loading: conflictsLoading, refetch: refetchScheduleConflicts } = useScheduleConflicts(selectedDate);
   const trucks = trucksData ?? [];
   const workers = workersData ?? [];
+  const conflicts = Array.isArray(scheduleConflicts) ? scheduleConflicts : [];
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastConflictKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [sidebarMessages, loading]);
+
+  useEffect(() => {
+    if (dispatchRefetchTrigger > 0) refetchScheduleConflicts();
+  }, [dispatchRefetchTrigger, refetchScheduleConflicts]);
+
+  useEffect(() => {
+    if (conflictsLoading) return;
+    const key = `${selectedDate}:${conflicts.length}:${conflicts.map((c) => c.message).join('|')}`;
+    if (lastConflictKeyRef.current === key) return;
+    lastConflictKeyRef.current = key;
+    const content = conflictStatusMessage(conflicts);
+    addSidebarMessage({ role: 'assistant', content, type: 'text' });
+  }, [selectedDate, conflicts, conflictsLoading, addSidebarMessage]);
 
   const sendMessage = async () => {
     const text = input.trim();

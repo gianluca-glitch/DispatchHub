@@ -436,12 +436,21 @@ export interface JobAnalysisWorkerRec {
   reason: string;
 }
 
+export interface JobAnalysisTruckRec {
+  truckId: string;
+  name: string;
+  type: string;
+  reason: string;
+}
+
 export interface JobAnalysis {
   conflicts: string[];
   recommendations: string[];
   warnings: string[];
   impactSummary: string;
   workerRecs: JobAnalysisWorkerRec[];
+  truckRecs?: JobAnalysisTruckRec[];
+  optimizationTip?: string;
 }
 
 export interface JobAnalysisFeedEntry {

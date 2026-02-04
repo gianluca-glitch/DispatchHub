@@ -65,3 +65,12 @@
 .transition-default {
   @apply transition-all duration-150 ease-in-out;
 }
+
+/* ── LEAFLET MAP: current stop pulse ─────────────────────── */
+.leaflet-marker-pulsing {
+  animation: leaflet-pulse 1.2s ease-in-out infinite;
+}
+@keyframes leaflet-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.9; }
+}

@@ -504,14 +504,18 @@ Return ONLY valid JSON with this exact schema:
   "recommendations": string[] (each under 30 words - proactive suggestions),
   "warnings": string[] (each under 30 words - potential issues),
   "impactSummary": string (one line, under 40 words - e.g. "Swapping to Truck 6 adds 15min to route, no conflicts"),
-  "workerRecs": [{ "workerId": string, "name": string, "score": number (0-100), "reason": string (under 25 words) }]
+  "workerRecs": [{ "workerId": string, "name": string, "score": number (0-100), "reason": string (under 25 words) }],
+  "truckRecs": [{ "truckId": string, "name": string, "type": string (e.g. PACKER, ROLL_OFF), "reason": string (under 25 words) }],
+  "optimizationTip": string | null (one actionable tip, e.g. "This job is 0.5mi from Harbor View's 8am stop — consolidate onto same truck to save a trip", or null)
 }
 
 - conflicts: red-bordered card (double-book, overlap, conflict)
 - recommendations: green-bordered (move job, consolidate, optimize)
 - warnings: yellow-bordered (heavy load, long route, risk)
 - impactSummary: one sentence for map/header
-- workerRecs: top 3–5 workers for this job with score and short reason
+- workerRecs: top 3 workers for this job with score and short reason
+- truckRecs: top 3 trucks (available, equipment match, no jobs today or closest to job site)
+- optimizationTip: single best consolidation/optimization suggestion or null
 
 No markdown, no code fences. JSON only.`;
 
@@ -532,6 +536,8 @@ No markdown, no code fences. JSON only.`;
       warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
       impactSummary: typeof parsed.impactSummary === 'string' ? parsed.impactSummary : '',
       workerRecs: Array.isArray(parsed.workerRecs) ? parsed.workerRecs : [],
+      truckRecs: Array.isArray(parsed.truckRecs) ? parsed.truckRecs : [],
+      optimizationTip: typeof parsed.optimizationTip === 'string' ? parsed.optimizationTip : undefined,
     };
   } catch {
     return {
@@ -540,6 +546,7 @@ No markdown, no code fences. JSON only.`;
       warnings: [],
       impactSummary: cleaned.slice(0, 80) || 'Analysis unavailable.',
       workerRecs: [],
+      truckRecs: [],
     };
   }
 }

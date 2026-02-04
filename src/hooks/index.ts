@@ -94,6 +94,11 @@ export function useConflicts(jobId: string | null, date: string) {
   );
 }
 
+/** Schedule-wide conflicts for a date (no jobId). Used by dispatch sidebar. */
+export function useScheduleConflicts(date: string) {
+  return useFetch<Conflict[]>(`/api/jobs/conflicts?date=${date}`, [date]);
+}
+
 // ── Global Search ───────────────────────────────────────────
 
 export function useGlobalSearch(query: string) {

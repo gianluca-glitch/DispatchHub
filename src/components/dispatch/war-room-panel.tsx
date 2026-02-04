@@ -1,34 +1,27 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { useWorkers, useTrucks, useRoutes } from '@/hooks';
+import { Input } from '@/components/ui/input';
+import { useWorkers, useTrucks, useConflicts } from '@/hooks';
 import { useCommandCenterStore } from '@/stores';
-import type { CartingJob, Worker, Truck, WorkerRole, WorkerStatus, TruckType, TruckStatus } from '@/types';
-import {
-  TRUCK_TYPE_LABELS,
-  WORKER_ROLE_LABELS,
-  BOROUGH_LABELS,
+import type {
+  CartingJob,
+  WorkerStatus,
+  TruckStatus,
+  JobAnalysis,
 } from '@/types';
+import { TRUCK_TYPE_LABELS, WORKER_ROLE_LABELS } from '@/types';
+import { ConflictBanner } from './conflict-banner';
 import { cn } from '@/lib/utils';
 import { Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { Conflict } from '@/types';
 
 export interface WarRoomPanelProps {
   job: CartingJob | null;
   date: string;
-  onStagedDriver?: (workerId: string, name: string) => void;
-  onStagedTruck?: (truckId: string, name: string) => void;
 }
-
-type WorkerRec = { workerId: string; score: number; reasons?: string[]; reason?: string };
 
 function workerStatusColor(s: WorkerStatus): string {
   if (s === 'OUT_SICK') return 'bg-danger';
@@ -44,128 +37,80 @@ function truckStatusColor(s: TruckStatus): string {
   return 'bg-text-3';
 }
 
-function scoreColor(score: number): string {
-  if (score > 80) return 'text-success';
-  if (score >= 60) return 'text-amber';
-  return 'text-danger';
-}
-
-export function WarRoomPanel({ job, date, onStagedDriver, onStagedTruck }: WarRoomPanelProps) {
+export function WarRoomPanel({ job, date }: WarRoomPanelProps) {
   const { data: workersData } = useWorkers();
   const { data: trucksData } = useTrucks();
-  const { data: routesData } = useRoutes(date);
+  const { data: conflictsData } = useConflicts(job?.id ?? null, date);
   const workers = workersData ?? [];
   const trucks = trucksData ?? [];
-  const routes = Array.isArray(routesData) ? routesData : [];
-  const truckJobCount = new Map<string, number>();
-  const truckBoroughs = new Map<string, string[]>();
-  const driverToRoute = new Map<string, { truckName: string; jobCount: number }>();
-  for (const r of routes) {
-    const count = r.stops?.length ?? 0;
-    truckJobCount.set(r.truckId, count);
-    const boroughs = [...new Set((r.stops ?? []).map((s: { borough: string }) => s.borough))];
-    truckBoroughs.set(r.truckId, boroughs);
-    if (r.driverId) driverToRoute.set(r.driverId, { truckName: r.truckName, jobCount: count });
-  }
+  const conflicts = conflictsData ?? [];
   const setModifiedField = useCommandCenterStore((s) => s.setModifiedField);
-  const modifiedFields = useCommandCenterStore((s) => s.modifiedFields);
 
-  const [workerRecs, setWorkerRecs] = useState<WorkerRec[]>([]);
-  const [recsLoading, setRecsLoading] = useState(false);
-  const [workerRoleFilter, setWorkerRoleFilter] = useState<string>('all');
-  const [workerAvailFilter, setWorkerAvailFilter] = useState<string>('all');
-  const [workerSort, setWorkerSort] = useState<string>('ai');
-  const [truckTypeFilter, setTruckTypeFilter] = useState<string>('all');
-  const [truckAvailFilter, setTruckAvailFilter] = useState<string>('all');
+  const [jobAnalysis, setJobAnalysis] = useState<JobAnalysis | null>(null);
+  const [jobAnalysisLoading, setJobAnalysisLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const jobContext = job
-    ? {
-        id: job.id,
-        customer: job.customer,
-        address: job.address,
-        borough: job.borough,
-        date: typeof job.date === 'string' ? job.date.slice(0, 10) : (job as any).date?.slice?.(0, 10),
-        time: job.time,
-        type: job.type,
-        truckId: job.truckId ?? undefined,
-        truckName: job.truck?.name ?? undefined,
-        driverId: job.driverId ?? undefined,
-        driverName: job.driver?.name ?? undefined,
-      }
-    : null;
+  const jobContext = useMemo(
+    () =>
+      job
+        ? {
+            id: job.id,
+            customer: job.customer,
+            address: job.address,
+            borough: job.borough,
+            date: typeof job.date === 'string' ? job.date.slice(0, 10) : (job as { date?: { slice?: (a: number, b: number) => string } })?.date?.slice?.(0, 10),
+            time: job.time,
+            type: job.type,
+            truckId: job.truckId ?? undefined,
+            truckName: job.truck?.name ?? undefined,
+            driverId: job.driverId ?? undefined,
+            driverName: job.driver?.name ?? undefined,
+          }
+        : null,
+    [job]
+  );
 
-  useEffect(() => {
-    if (!job || !jobContext) {
-      setWorkerRecs([]);
-      return;
-    }
-    setRecsLoading(true);
-    fetch('/api/workers/recommend', {
+  const runJobAnalyze = useCallback(() => {
+    if (!job?.id) return;
+    setJobAnalysisLoading(true);
+    fetch('/api/dispatch/job-analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobContext }),
+      body: JSON.stringify({ jobId: job.id, date, action: 'initial' }),
     })
       .then((res) => res.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
-        const list = Array.isArray(data.data) ? data.data : [];
-        setWorkerRecs(list.map((r: any) => ({ workerId: r.workerId, score: r.score ?? 0, reasons: r.reasons, reason: r.reason })));
+        setJobAnalysis(data);
       })
-      .catch(() => setWorkerRecs([]))
-      .finally(() => setRecsLoading(false));
-  }, [job?.id]);
+      .catch(() => setJobAnalysis(null))
+      .finally(() => setJobAnalysisLoading(false));
+  }, [job?.id, date]);
 
-  const scoreByWorkerId = useCallback(
-    (workerId: string) => workerRecs.find((r) => r.workerId === workerId)?.score ?? null,
-    [workerRecs]
-  );
-
-  const filteredWorkers = workers.filter((w) => {
-    if (workerRoleFilter !== 'all' && w.role !== workerRoleFilter) return false;
-    if (workerAvailFilter === 'available' && !['AVAILABLE', 'ON_SITE', 'EN_ROUTE'].includes(w.status)) return false;
-    return true;
-  });
-
-  const sortedWorkers = [...filteredWorkers].sort((a, b) => {
-    if (workerSort === 'ai') {
-      const sa = scoreByWorkerId(a.id) ?? -1;
-      const sb = scoreByWorkerId(b.id) ?? -1;
-      return sb - sa;
+  useEffect(() => {
+    if (!job?.id) {
+      setJobAnalysis(null);
+      return;
     }
-    if (workerSort === 'name') return a.name.localeCompare(b.name);
-    if (workerSort === 'role') return (a.role as string).localeCompare(b.role as string);
-    return 0;
-  });
+    runJobAnalyze();
+  }, [job?.id, date, runJobAnalyze]);
 
-  const filteredTrucks = trucks.filter((t) => {
-    if (truckTypeFilter !== 'all' && t.type !== truckTypeFilter) return false;
-    if (truckAvailFilter === 'available' && t.status !== 'AVAILABLE') return false;
-    return true;
-  });
-
-  const driverStagedId = modifiedFields.driverId !== undefined ? modifiedFields.driverId : null;
-  const driverStagedName = driverStagedId ? workers.find((w) => w.id === driverStagedId)?.name : null;
-  const truckStagedId = modifiedFields.truckId !== undefined ? modifiedFields.truckId : null;
-  const truckStagedName = truckStagedId ? trucks.find((t) => t.id === truckStagedId)?.name : null;
-
-  const handleAssignDriver = useCallback(
-    (workerId: string, name: string) => {
-      setModifiedField('driverId', workerId);
-      onStagedDriver?.(workerId, name);
-    },
-    [setModifiedField, onStagedDriver]
-  );
-
-  const handleUseTruck = useCallback(
-    (truckId: string, name: string) => {
-      setModifiedField('truckId', truckId);
-      onStagedTruck?.(truckId, name);
-    },
-    [setModifiedField, onStagedTruck]
-  );
+  const searchLower = searchQuery.trim().toLowerCase();
+  const searchResults = useMemo(() => {
+    if (!searchLower || searchLower.length < 2) return { workers: [], trucks: [] };
+    const w = workers
+      .filter((worker) => worker.name.toLowerCase().includes(searchLower))
+      .slice(0, 5);
+    const t = trucks
+      .filter((truck) => truck.name.toLowerCase().includes(searchLower))
+      .slice(0, 5);
+    return { workers: w, trucks: t };
+  }, [searchLower, workers, trucks]);
+  const hasSearchResults =
+    searchResults.workers.length > 0 || searchResults.trucks.length > 0;
 
   const sendChat = useCallback(async () => {
     const text = chatInput.trim();
@@ -204,7 +149,7 @@ export function WarRoomPanel({ job, date, onStagedDriver, onStagedTruck }: WarRo
   if (!job) {
     return (
       <div className="flex flex-col h-full min-h-0 bg-surface-0 p-4 text-text-3 text-sm">
-        Select a job to see crew and fleet.
+        Select a job to see conflicts, AI recommendations, and chat.
       </div>
     );
   }
@@ -212,202 +157,169 @@ export function WarRoomPanel({ job, date, onStagedDriver, onStagedTruck }: WarRo
   return (
     <div className="flex flex-col h-full min-h-0 bg-surface-0">
       {toastMsg && (
-        <div className="shrink-0 mx-3 mt-2 p-2 rounded border border-amber/40 bg-amber/10 text-amber text-xs animate-in fade-in">
+        <div className="shrink-0 mx-3 mt-2 p-2 rounded border border-amber/40 bg-amber/10 text-amber text-xs">
           {toastMsg}
         </div>
       )}
 
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        {/* Section 1: Worker cards — top 50% */}
-        <div className="shrink-0 flex flex-col border-b border-border" style={{ height: '50%' }}>
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-            <span className="text-xs font-semibold text-text-2 uppercase tracking-wider">
-              AVAILABLE CREW
-            </span>
-            <span className="rounded bg-surface-2 px-2 py-0.5 text-xs font-mono text-text-2">
-              {sortedWorkers.length}
-            </span>
+      {/* Section 1: Conflicts — compact, always visible */}
+      <div className="shrink-0 px-3 py-2 border-b border-border">
+        <h3 className="text-xs font-semibold text-text-2 uppercase tracking-wider mb-1.5">
+          Conflicts
+        </h3>
+        {conflicts.length === 0 ? (
+          <div className="rounded border-l-2 border-success bg-success/10 text-success px-2 py-1.5 text-xs">
+            No conflicts
           </div>
-          <div className="flex flex-wrap gap-2 px-3 py-2 border-b border-border/50">
-            <Select value={workerRoleFilter} onValueChange={setWorkerRoleFilter}>
-              <SelectTrigger className="h-8 w-[110px] text-xs bg-surface-1 border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {(Object.keys(WORKER_ROLE_LABELS) as WorkerRole[]).map((r) => (
-                  <SelectItem key={r} value={r}>{WORKER_ROLE_LABELS[r]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={workerAvailFilter} onValueChange={setWorkerAvailFilter}>
-              <SelectTrigger className="h-8 w-[120px] text-xs bg-surface-1 border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="available">Available Only</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={workerSort} onValueChange={setWorkerSort}>
-              <SelectTrigger className="h-8 w-[100px] text-xs bg-surface-1 border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ai">AI Score</SelectItem>
-                <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="role">Role</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 grid grid-cols-1 gap-2 min-h-0">
-            {recsLoading ? (
-              <div className="flex items-center gap-2 text-text-3 text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading recommendations…
+        ) : (
+          <div className="space-y-1">
+            {conflicts.map((c: Conflict) => (
+              <div
+                key={`${c.type}-${c.affectedJobId ?? c.message}`}
+                className="rounded border-l-2 border-amber bg-amber/10 px-2 py-1"
+              >
+                <ConflictBanner conflict={c} className="border-0 rounded-r text-xs py-0" />
               </div>
-            ) : (
-              sortedWorkers.map((w) => {
-                const score = scoreByWorkerId(w.id);
-                return (
-                  <div
-                    key={w.id}
-                    className="rounded border border-border bg-surface-1 p-2 text-sm"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-text-0 truncate">{w.name}</p>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-text-2">
-                            {WORKER_ROLE_LABELS[w.role]}
-                          </span>
-                          <span className={cn('w-2 h-2 rounded-full shrink-0', workerStatusColor(w.status))} />
-                          {(w.certifications ?? []).slice(0, 4).map((c) => (
-                            <span key={c} className="rounded bg-surface-2 px-1 py-0.5 text-xs text-text-2">
-                              {c}
-                            </span>
-                          ))}
-                        </div>
-                        <p className="text-xs text-text-3 mt-1">
-                          {driverToRoute.has(w.id)
-                            ? `${driverToRoute.get(w.id)!.truckName} · ${driverToRoute.get(w.id)!.jobCount} jobs today`
-                            : w.currentAssignment || 'Available'}
-                        </p>
-                        {score != null && (
-                          <p className={cn('text-xs font-mono mt-0.5', scoreColor(score))}>
-                            AI: {score}
-                          </p>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0 border-amber/40 text-amber hover:bg-amber/10 h-8"
-                        onClick={() => handleAssignDriver(w.id, w.name)}
-                      >
-                        Assign
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+            ))}
           </div>
-          {driverStagedName && (
-            <div className="shrink-0 px-3 py-2 border-t border-amber/30 bg-amber/10 text-amber text-xs">
-              {driverStagedName} staged — Save Changes to apply
-            </div>
-          )}
-        </div>
-
-        {/* Section 2: Fleet cards — bottom 50% */}
-        <div className="flex-1 flex flex-col min-h-0" style={{ minHeight: '50%' }}>
-          <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-            <span className="text-xs font-semibold text-text-2 uppercase tracking-wider">
-              FLEET STATUS
-            </span>
-            <span className="rounded bg-surface-2 px-2 py-0.5 text-xs font-mono text-text-2">
-              {filteredTrucks.length}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2 px-3 py-2 border-b border-border/50">
-            <Select value={truckTypeFilter} onValueChange={setTruckTypeFilter}>
-              <SelectTrigger className="h-8 w-[120px] text-xs bg-surface-1 border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {(Object.keys(TRUCK_TYPE_LABELS) as TruckType[]).map((t) => (
-                  <SelectItem key={t} value={t}>{TRUCK_TYPE_LABELS[t]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={truckAvailFilter} onValueChange={setTruckAvailFilter}>
-              <SelectTrigger className="h-8 w-[120px] text-xs bg-surface-1 border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="available">Available Only</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 grid grid-cols-1 gap-2 min-h-0">
-            {filteredTrucks.map((t) => {
-              const jobCount = truckJobCount.get(t.id) ?? 0;
-              const boroughs = truckBoroughs.get(t.id) ?? [];
-              return (
-                <div
-                  key={t.id}
-                  className="rounded border border-border bg-surface-1 p-2 text-sm"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-text-0">{t.name}</p>
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-text-2">
-                          {TRUCK_TYPE_LABELS[t.type]}
-                        </span>
-                        <span className={cn('w-2 h-2 rounded-full shrink-0', truckStatusColor(t.status))} />
-                      </div>
-                      <p className="text-xs text-text-3 mt-1">
-                        {t.assignedDriver?.name ?? 'No driver'}
-                      </p>
-                      <p className="text-xs text-text-3">
-                        {jobCount > 0 ? `${jobCount} jobs today` : 'No jobs'}
-                      </p>
-                      {boroughs.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {boroughs.map((b) => (
-                            <span key={b} className="rounded bg-surface-2 px-1 py-0.5 text-xs text-text-2">
-                              {typeof b === 'string' && b in BOROUGH_LABELS ? BOROUGH_LABELS[b as keyof typeof BOROUGH_LABELS] : b}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="shrink-0 border-amber/40 text-amber hover:bg-amber/10 h-8"
-                      onClick={() => handleUseTruck(t.id, t.name)}
-                    >
-                      Use This Truck
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {truckStagedName && (
-            <div className="shrink-0 px-3 py-2 border-t border-amber/30 bg-amber/10 text-amber text-xs">
-              {truckStagedName} staged — Save Changes to apply
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* Section 3: Chat input — fixed bottom */}
+      {/* Section 2: AI Recommendations */}
+      <div className="shrink-0 px-3 py-2 border-b border-border overflow-y-auto max-h-[50vh]">
+        <h3 className="text-xs font-semibold text-text-2 uppercase tracking-wider mb-2">
+          AI RECOMMENDATIONS
+        </h3>
+        {jobAnalysisLoading ? (
+          <div className="flex items-center gap-2 text-text-3 text-sm py-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Analyzing…
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {(jobAnalysis?.workerRecs ?? []).slice(0, 3).map((rec) => (
+              <div
+                key={rec.workerId}
+                className="rounded border-l-4 border-success bg-surface-1 p-2 text-sm"
+              >
+                <div className="font-medium text-text-0">
+                  {rec.name} — Score: {rec.score}
+                </div>
+                <p className="text-xs text-text-3 mt-0.5 line-clamp-1">{rec.reason}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-1.5 h-7 text-xs border-success/40 text-success hover:bg-success/10"
+                  onClick={() => setModifiedField('driverId', rec.workerId)}
+                >
+                  Assign
+                </Button>
+              </div>
+            ))}
+            {(jobAnalysis?.truckRecs ?? []).slice(0, 3).map((rec) => (
+              <div
+                key={rec.truckId}
+                className="rounded border-l-4 border-info bg-surface-1 p-2 text-sm"
+              >
+                <div className="font-medium text-text-0">
+                  {rec.name} — {TRUCK_TYPE_LABELS[rec.type as keyof typeof TRUCK_TYPE_LABELS] ?? rec.type}
+                </div>
+                <p className="text-xs text-text-3 mt-0.5 line-clamp-1">{rec.reason}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-1.5 h-7 text-xs border-info/40 text-info hover:bg-info/10"
+                  onClick={() => setModifiedField('truckId', rec.truckId)}
+                >
+                  Use This
+                </Button>
+              </div>
+            ))}
+            {(jobAnalysis?.optimizationTip ?? (jobAnalysis?.recommendations ?? [])[0]) && (
+              <div className="rounded border-l-4 border-amber bg-surface-1 p-2 text-sm">
+                <p className="text-xs text-text-0">
+                  {jobAnalysis?.optimizationTip ?? (jobAnalysis?.recommendations ?? [])[0]}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-1.5 h-7 text-xs border-amber/40 text-amber hover:bg-amber/10"
+                  onClick={() => {
+                    const tip = jobAnalysis?.optimizationTip ?? (jobAnalysis?.recommendations ?? [])[0];
+                    if (tip) toast.info(tip, { duration: 4000 });
+                  }}
+                >
+                  Apply
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Section 3: Search crew or trucks */}
+      <div className="shrink-0 px-3 py-2 border-b border-border">
+        <Input
+          type="text"
+          placeholder="Search crew or trucks..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="h-8 text-sm bg-surface-1 border-border"
+        />
+        {searchLower.length >= 2 && (
+          <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+            {searchResults.workers.map((w) => (
+              <div
+                key={w.id}
+                className="flex items-center justify-between gap-2 rounded bg-surface-1 px-2 py-1.5 text-sm"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-text-0 truncate">{w.name}</span>
+                  <span className="rounded bg-surface-2 px-1 py-0.5 text-xs text-text-2 shrink-0">
+                    {WORKER_ROLE_LABELS[w.role]}
+                  </span>
+                  <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', workerStatusColor(w.status))} />
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-xs shrink-0"
+                  onClick={() => setModifiedField('driverId', w.id)}
+                >
+                  Assign
+                </Button>
+              </div>
+            ))}
+            {searchResults.trucks.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-center justify-between gap-2 rounded bg-surface-1 px-2 py-1.5 text-sm"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-text-0 truncate">{t.name}</span>
+                  <span className="rounded bg-surface-2 px-1 py-0.5 text-xs text-text-2 shrink-0">
+                    {TRUCK_TYPE_LABELS[t.type]}
+                  </span>
+                  <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', truckStatusColor(t.status))} />
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-xs shrink-0"
+                  onClick={() => setModifiedField('truckId', t.id)}
+                >
+                  Use This
+                </Button>
+              </div>
+            ))}
+            {!hasSearchResults && (
+              <p className="text-xs text-text-3 py-1">No crew or trucks match.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Section 4: Chat — bottom, always visible */}
       <div className="shrink-0 p-3 border-t border-border bg-surface-0">
         <div className="flex gap-2">
           <input

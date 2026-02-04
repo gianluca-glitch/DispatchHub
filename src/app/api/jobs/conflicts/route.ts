@@ -1,38 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { detectConflicts } from '@/lib/conflicts';
+import type { Conflict } from '@/types';
 
-// GET /api/jobs/conflicts?jobId=X&date=YYYY-MM-DD (optionally truckId, driverId to override)
+// GET /api/jobs/conflicts?date=YYYY-MM-DD — schedule-wide conflicts for the day
+// GET /api/jobs/conflicts?jobId=X&date=YYYY-MM-DD — conflicts for a single job (optional truckId, driverId)
 export async function GET(req: NextRequest) {
   const jobId = req.nextUrl.searchParams.get('jobId');
   const date = req.nextUrl.searchParams.get('date');
   const truckIdParam = req.nextUrl.searchParams.get('truckId');
   const driverIdParam = req.nextUrl.searchParams.get('driverId');
 
-  if (!jobId || !date) {
-    return NextResponse.json({ error: 'jobId and date required' }, { status: 400 });
+  if (!date) {
+    return NextResponse.json({ error: 'date required' }, { status: 400 });
   }
 
-  const dateObj = new Date(date);
+  const dateObj = new Date(date + 'T12:00:00');
+  const dateOnly = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+
+  // Schedule-wide: no jobId — aggregate conflicts for all jobs on this date
+  if (!jobId) {
+    const jobs = await db.cartingJob.findMany({
+      where: { date: dateOnly, status: { notIn: ['CANCELLED'] } },
+      select: { id: true, truckId: true, driverId: true, time: true },
+    });
+    const seen = new Set<string>();
+    const all: Conflict[] = [];
+    for (const job of jobs) {
+      const conflicts = await detectConflicts({
+        jobId: job.id,
+        date: dateOnly,
+        time: job.time,
+        truckId: job.truckId ?? undefined,
+        driverId: job.driverId ?? undefined,
+      });
+      for (const c of conflicts) {
+        const key = `${c.type}:${c.message}:${c.affectedJobId ?? ''}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          all.push(c);
+        }
+      }
+    }
+    return NextResponse.json({ data: all });
+  }
+
+  // Single-job mode
   let truckId = truckIdParam ?? undefined;
   let driverId = driverIdParam ?? undefined;
   let time: string | undefined;
 
-  if (!truckId || !driverId) {
-    const job = await db.cartingJob.findUnique({
-      where: { id: jobId },
-      select: { truckId: true, driverId: true, time: true },
-    });
-    if (job) {
-      truckId = truckId ?? job.truckId ?? undefined;
-      driverId = driverId ?? job.driverId ?? undefined;
-      time = job.time;
-    }
+  const job = await db.cartingJob.findUnique({
+    where: { id: jobId },
+    select: { truckId: true, driverId: true, time: true },
+  });
+  if (job) {
+    truckId = truckId ?? job.truckId ?? undefined;
+    driverId = driverId ?? job.driverId ?? undefined;
+    time = job.time;
   }
 
   const conflicts = await detectConflicts({
     jobId,
-    date: dateObj,
+    date: dateOnly,
     time,
     truckId,
     driverId,
