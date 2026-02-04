@@ -1,26 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { parseVoiceIntent } from '@/lib/ai/claude';
-import { analyzeScenario } from '@/lib/ai/claude';
-import type { ScenarioInput, ScenarioResult } from '@/types';
-
-type Intent =
-  | 'TRUCK_DOWN'
-  | 'MARK_SICK'
-  | 'RESCHEDULE'
-  | 'ADD_NOTE'
-  | 'MARK_COMPLETE'
-  | 'SWAP_WORKER'
-  | 'SWAP_TRUCK'
-  | 'GENERAL_QUERY';
-
-const SCENARIO_INTENTS: Intent[] = [
-  'TRUCK_DOWN',
-  'MARK_SICK',
-  'RESCHEDULE',
-  'SWAP_TRUCK',
-  'SWAP_WORKER', // maps to SWAP_DRIVER scenario
-];
+import type { VoiceCommandActionItem } from '@/types';
 
 interface JobContextBody {
   id?: string;
@@ -33,12 +14,14 @@ interface JobContextBody {
 }
 
 // POST /api/dispatch/voice-command
+// Body: { text, date?, conversationHistory?: Array<{role, content}>, jobContext?: JobContextBody }
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const text = (body.text as string)?.trim();
   const dateParam = (body.date as string) ?? new Date().toISOString().slice(0, 10);
   const date = new Date(dateParam + 'T12:00:00');
   const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const conversationHistory = (body.conversationHistory as { role: string; content: string }[]) ?? [];
   const jobContext = body.jobContext as JobContextBody | null | undefined;
 
   if (!text) {
@@ -59,39 +42,32 @@ export async function POST(req: NextRequest) {
     db.worker.findMany(),
   ]);
 
+  // Full schedule context for AI — include job IDs so AI can reference them
   const scheduleContextParts = [
-    'Jobs today:',
+    'Jobs today (use exact id for jobId in actions):',
     ...jobs.map(
       (j) =>
-        `- ${j.customer} @ ${j.address} (${j.borough}) ${j.time} | Truck: ${j.truck?.name ?? 'unassigned'} | Driver: ${j.driver?.name ?? 'unassigned'} | Status: ${j.status}`
+        `- id=${j.id} | ${j.customer} @ ${j.address} (${j.borough}) ${j.time} | Truck: ${j.truck?.name ?? 'unassigned'} (${j.truckId ?? 'null'}) | Driver: ${j.driver?.name ?? 'unassigned'} (${j.driverId ?? 'null'}) | Status: ${j.status}`
     ),
-    'Trucks: ' + trucks.map((t) => t.name).join(', '),
-    'Workers: ' + workers.map((w) => w.name).join(', '),
+    'Trucks: ' + trucks.map((t) => `${t.name} (id=${t.id})`).join(', '),
+    'Workers: ' + workers.map((w) => `${w.name} (id=${w.id})`).join(', '),
   ];
   if (jobContext && (jobContext.id || jobContext.customer)) {
     scheduleContextParts.unshift(
-      'FOCUS JOB (user is asking about this specific job): ' +
+      'FOCUS JOB: ' +
         `id=${jobContext.id ?? '?'} | customer=${jobContext.customer ?? '?'} | address=${jobContext.address ?? '?'} | truck=${jobContext.truckName ?? jobContext.truckId ?? '?'} | driver=${jobContext.driverName ?? jobContext.driverId ?? '?'}.`
     );
   }
   const scheduleContext = scheduleContextParts.join('\n');
 
   let parsed: {
-    intent: string;
-    entities: {
-      workerName?: string | null;
-      jobIdentifier?: string | null;
-      truckName?: string | null;
-      date?: string | null;
-      time?: string | null;
-      note?: string | null;
-      status?: string | null;
-    };
-    confidence: number;
-    suggestedAction: string;
+    type: 'update' | 'scenario' | 'query';
+    message: string;
+    actions: VoiceCommandActionItem[];
+    autoApply: boolean;
   };
   try {
-    parsed = await parseVoiceIntent(text, scheduleContext);
+    parsed = await parseVoiceIntent(text, scheduleContext, conversationHistory);
   } catch (e) {
     return NextResponse.json(
       { error: 'Failed to parse intent' },
@@ -99,212 +75,99 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const intent = parsed.intent as Intent;
-  const entities = parsed.entities ?? {};
-
-  const resolveTruck = (name: string | null | undefined): string | null => {
-    if (!name) return null;
-    const n = name.toLowerCase().replace(/\s+/g, '');
-    const t = trucks.find(
-      (x) =>
-        x.name.toLowerCase().replace(/\s+/g, '').includes(n) ||
-        n.includes(x.name.toLowerCase().replace(/\s+/g, ''))
-    );
+  const resolveTruckId = (idOrName: string | undefined): string | null => {
+    if (!idOrName) return null;
+    const t = trucks.find((x) => x.id === idOrName || x.name.toLowerCase().includes(idOrName.toLowerCase()));
     return t?.id ?? null;
   };
-  const resolveWorker = (name: string | null | undefined): string | null => {
-    if (!name) return null;
-    const n = name.toLowerCase();
-    const w = workers.find((x) => x.name.toLowerCase().includes(n) || n.includes(x.name.toLowerCase()));
+  const resolveDriverId = (idOrName: string | undefined): string | null => {
+    if (!idOrName) return null;
+    const w = workers.find((x) => x.id === idOrName || x.name.toLowerCase().includes(idOrName.toLowerCase()));
     return w?.id ?? null;
   };
-  const resolveJob = (identifier: string | null | undefined): (typeof jobs)[0] | null => {
-    if (jobContext?.id) {
-      const byId = jobs.find((x) => x.id === jobContext.id);
-      if (byId) return byId;
-    }
-    if (!identifier) return null;
-    const id = identifier.toLowerCase();
-    const j = jobs.find(
-      (x) =>
-        x.customer.toLowerCase().includes(id) ||
-        id.includes(x.customer.toLowerCase()) ||
-        x.address.toLowerCase().includes(id) ||
-        id.includes(x.address.toLowerCase()) ||
-        x.borough.toLowerCase().includes(id)
-    );
-    return j ?? null;
-  };
 
-  // ── SCENARIO: run analysis and return result ──
-  if (SCENARIO_INTENTS.includes(intent)) {
-    let scenario: ScenarioInput;
-    if (intent === 'TRUCK_DOWN') {
-      const truckId = resolveTruck(entities.truckName ?? null);
-      if (!truckId) {
-        return NextResponse.json({
-          type: 'query',
-          result: { answer: 'Could not identify which truck. Say the truck name or number.' },
-        });
+  let appliedCount = 0;
+  if (parsed.autoApply && parsed.actions?.length) {
+    for (const act of parsed.actions) {
+      const job = jobs.find((j) => j.id === act.jobId);
+      if (!job) continue;
+
+      try {
+        if (act.action === 'assign_driver') {
+          const driverId = act.params?.driverId ?? resolveDriverId(act.params?.driverName);
+          if (driverId) {
+            await db.cartingJob.update({
+              where: { id: act.jobId },
+              data: { driverId },
+            });
+            appliedCount++;
+          }
+        } else if (act.action === 'assign_truck') {
+          const truckId = act.params?.truckId ?? resolveTruckId(act.params?.truckName);
+          if (truckId) {
+            await db.cartingJob.update({
+              where: { id: act.jobId },
+              data: { truckId },
+            });
+            appliedCount++;
+          }
+        } else if (act.action === 'mark_complete') {
+          await db.cartingJob.update({
+            where: { id: act.jobId },
+            data: { status: 'COMPLETED' },
+          });
+          appliedCount++;
+        } else if (act.action === 'mark_delayed') {
+          await db.cartingJob.update({
+            where: { id: act.jobId },
+            data: { status: 'DELAYED' },
+          });
+          appliedCount++;
+        } else if (act.action === 'swap_truck') {
+          const newTruckId = act.params?.newTruckId ?? resolveTruckId(act.params?.newTruckName);
+          if (newTruckId) {
+            await db.cartingJob.update({
+              where: { id: act.jobId },
+              data: { truckId: newTruckId },
+            });
+            appliedCount++;
+          }
+        } else if (act.action === 'swap_driver') {
+          const newDriverId = act.params?.newDriverId ?? resolveDriverId(act.params?.newDriverName);
+          if (newDriverId) {
+            await db.cartingJob.update({
+              where: { id: act.jobId },
+              data: { driverId: newDriverId },
+            });
+            appliedCount++;
+          }
+        } else if (act.action === 'reschedule') {
+          const newDate = act.params?.newDate;
+          const newTime = act.params?.newTime;
+          if (newDate) {
+            const updateData: { date: Date; time?: string } = {
+              date: new Date(newDate + 'T12:00:00'),
+            };
+            if (newTime) updateData.time = newTime;
+            await db.cartingJob.update({
+              where: { id: act.jobId },
+              data: updateData,
+            });
+            appliedCount++;
+          }
+        }
+      } catch (_) {
+        // Skip failed action, continue with others
       }
-      scenario = { type: 'TRUCK_DOWN', affectedTruckId: truckId };
-    } else if (intent === 'MARK_SICK') {
-      const workerId = resolveWorker(entities.workerName ?? null);
-      if (!workerId) {
-        return NextResponse.json({
-          type: 'query',
-          result: { answer: 'Could not identify which worker. Say the worker name.' },
-        });
-      }
-      scenario = { type: 'WORKER_SICK', affectedWorkerId: workerId };
-    } else if (intent === 'SWAP_TRUCK' || intent === 'SWAP_WORKER') {
-      const job = resolveJob(entities.jobIdentifier ?? null);
-      if (!job) {
-        return NextResponse.json({
-          type: 'query',
-          result: { answer: 'Could not identify which job. Specify customer or address.' },
-        });
-      }
-      scenario = {
-        type: intent === 'SWAP_TRUCK' ? 'SWAP_TRUCK' : 'SWAP_DRIVER',
-        affectedJobId: job.id,
-      };
-    } else if (intent === 'RESCHEDULE') {
-      const job = resolveJob(entities.jobIdentifier ?? null);
-      if (!job) {
-        return NextResponse.json({
-          type: 'query',
-          result: { answer: 'Could not identify which job to reschedule.' },
-        });
-      }
-      scenario = {
-        type: 'RESCHEDULE',
-        affectedJobId: job.id,
-        newDate: entities.date ?? undefined,
-        newTime: entities.time ?? undefined,
-      };
-    } else {
-      return NextResponse.json({
-        type: 'query',
-        result: { answer: parsed.suggestedAction || 'Scenario not supported.' },
-      });
-    }
-
-    const todayJobs = jobs.map((j) => ({
-      id: j.id,
-      customer: j.customer,
-      address: j.address,
-      borough: j.borough,
-      time: j.time,
-      type: j.type,
-      status: j.status,
-      truckId: j.truckId,
-      truckName: j.truck?.name ?? null,
-      driverId: j.driverId,
-      driverName: j.driver?.name ?? null,
-      workerIds: j.workers.map((w) => w.workerId),
-      workerNames: j.workers.map((w) => w.worker.name),
-    }));
-    const truckJobCount = new Map<string, number>();
-    jobs.forEach((j) => {
-      if (j.truckId) truckJobCount.set(j.truckId, (truckJobCount.get(j.truckId) ?? 0) + 1);
-    });
-    const workerJobCount = new Map<string, number>();
-    jobs.forEach((j) => {
-      if (j.driverId) workerJobCount.set(j.driverId, (workerJobCount.get(j.driverId) ?? 0) + 1);
-      j.workers.forEach((w) =>
-        workerJobCount.set(w.workerId, (workerJobCount.get(w.workerId) ?? 0) + 1)
-      );
-    });
-    const byTruck = new Map<string, typeof jobs>();
-    jobs.forEach((j) => {
-      if (!j.truckId) return;
-      const list = byTruck.get(j.truckId) ?? [];
-      list.push(j);
-      byTruck.set(j.truckId, list);
-    });
-    const truckRoutes = Array.from(byTruck.entries()).map(([truckId, truckJobs]) => {
-      const truck = truckJobs[0].truck!;
-      return {
-        truckId,
-        truckName: truck.name,
-        stops: truckJobs.map((j, idx) => ({
-          jobId: j.id,
-          customer: j.customer,
-          address: j.address,
-          borough: j.borough,
-          time: j.time,
-          type: j.type,
-          status: j.status,
-          sequence: idx,
-        })),
-      };
-    });
-
-    const result: ScenarioResult = await analyzeScenario({
-      scenario,
-      todayJobs,
-      trucks: trucks.map((t) => ({
-        id: t.id,
-        name: t.name,
-        type: t.type,
-        status: t.status,
-        currentLocation: t.currentLocation,
-        todayJobCount: truckJobCount.get(t.id) ?? 0,
-      })),
-      workers: workers.map((w) => ({
-        id: w.id,
-        name: w.name,
-        role: w.role,
-        status: w.status,
-        certifications: w.certifications,
-        todayJobCount: workerJobCount.get(w.id) ?? 0,
-      })),
-      truckRoutes,
-    });
-
-    return NextResponse.json({ type: 'scenario', result });
-  }
-
-  // ── DIRECT UPDATE: mark complete, add note, update status ──
-  if (intent === 'MARK_COMPLETE' || intent === 'ADD_NOTE') {
-    const job = resolveJob(entities.jobIdentifier ?? null);
-    if (!job) {
-      return NextResponse.json({
-        type: 'query',
-        result: { answer: 'Could not find that job to update.' },
-      });
-    }
-    if (intent === 'MARK_COMPLETE') {
-      await db.cartingJob.update({
-        where: { id: job.id },
-        data: { status: 'COMPLETED' },
-      });
-      return NextResponse.json({
-        type: 'update',
-        result: { success: true, message: `Marked ${job.customer} as completed.` },
-      });
-    }
-    if (intent === 'ADD_NOTE') {
-      const note = (entities.note as string)?.trim() || '';
-      const existing = (job.notes ?? '').trim();
-      const newNotes = existing ? `${existing}\n${note}` : note;
-      await db.cartingJob.update({
-        where: { id: job.id },
-        data: { notes: newNotes || null },
-      });
-      return NextResponse.json({
-        type: 'update',
-        result: { success: true, message: 'Note added.' },
-      });
     }
   }
 
-  // ── QUERY: answer from schedule ──
-  const answer =
-    parsed.suggestedAction ||
-    (jobs.length === 0
-      ? 'No jobs scheduled for this date.'
-      : `There are ${jobs.length} jobs today. ${scheduleContext.slice(0, 300)}...`);
-  return NextResponse.json({ type: 'query', result: { answer } });
+  return NextResponse.json({
+    type: parsed.type,
+    message: parsed.message,
+    actions: parsed.actions ?? [],
+    autoApply: parsed.autoApply,
+    applied: appliedCount > 0,
+    appliedCount,
+  });
 }

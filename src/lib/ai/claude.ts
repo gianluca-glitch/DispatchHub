@@ -89,49 +89,99 @@ Max 3 recommendations. Score honestly — don't inflate.`,
 }
 
 
-// ─── VOICE INTENT PARSING ──────────────────────────────────
-// Takes a voice transcript and returns the dispatcher's intent
+// ─── VOICE INTENT PARSING (Agentic) ─────────────────────────
+// Takes a voice/chat transcript and returns executable actions.
+// NEVER asks for clarification — acts or suggests concretely.
 
-export async function parseVoiceIntent(transcript: string, currentScheduleContext: string) {
+export interface AgenticVoiceInput {
+  transcript: string;
+  scheduleContext: string;
+  conversationHistory?: { role: string; content: string }[];
+}
+
+export async function parseVoiceIntent(
+  transcript: string,
+  scheduleContext: string,
+  conversationHistory?: { role: string; content: string }[]
+): Promise<import('@/types').AgenticVoiceResponse> {
+  const messages: { role: 'user' | 'assistant'; content: string }[] = [];
+
+  if (conversationHistory?.length) {
+    const recent = conversationHistory.slice(-10);
+    for (const m of recent) {
+      if (m.role === 'user' || m.role === 'assistant') {
+        messages.push({ role: m.role, content: m.content });
+      }
+    }
+  }
+
+  messages.push({
+    role: 'user',
+    content: `FULL SCHEDULE FOR TODAY:\n${scheduleContext}\n\nDispatcher said: "${transcript}"`,
+  });
+
   const response = await getClient().messages.create({
     model: MODEL,
-    max_tokens: 1024,
-    system: `You are a voice command interpreter for a dispatch system.
-The dispatcher speaks naturally and you need to extract the intent.
+    max_tokens: 2048,
+    system: `You are an agentic dispatch AI for a NYC carting/demolition company. You EXECUTE commands, not ask questions.
 
-Possible intents:
-- TRUCK_DOWN: truck is out of service (broke, down, out)
-- MARK_SICK: worker is out sick, remove from schedule
-- RESCHEDULE: move a job to a different date/time
-- ADD_NOTE: add a note to a job
-- MARK_COMPLETE: mark a job as completed
-- SWAP_WORKER: replace one worker with another
-- SWAP_TRUCK: replace one truck with another
-- GENERAL_QUERY: asking a question about the schedule
+RULES:
+- NEVER ask for clarification. If ambiguous, pick the most logical interpretation and act.
+- When user says 'yes', 'do it', 'apply', 'fix it', 'go ahead', 'ok' — execute the most recent suggestion.
+- Always return specific, actionable changes with exact job IDs, truck names, and worker names.
+- You have full authority to reassign trucks, swap drivers, mark jobs complete, and reschedule.
 
-Return ONLY valid JSON:
+You must respond with JSON only. No markdown, no explanation outside the JSON structure.
+
+Response format:
 {
-  "intent": string,
-  "entities": {
-    "workerName": string | null,
-    "jobIdentifier": string | null,
-    "truckName": string | null,
-    "date": string | null,
-    "time": string | null,
-    "note": string | null,
-    "status": string | null
-  },
-  "confidence": number (0-100),
-  "suggestedAction": string
-}`,
-    messages: [
-      { role: 'user', content: `Current schedule context:\n${currentScheduleContext}\n\nDispatcher said: "${transcript}"` }
-    ],
+  "type": "update" | "scenario" | "query",
+  "message": "Human-readable summary of what you did or recommend",
+  "actions": [
+    {
+      "action": "assign_driver" | "assign_truck" | "mark_complete" | "mark_delayed" | "reschedule" | "swap_truck" | "swap_driver",
+      "jobId": "exact job id from schedule context",
+      "jobName": "customer name for display",
+      "params": { ... action-specific params }
+    }
+  ],
+  "autoApply": false
+}
+
+When user confirms (yes/do it/apply/go ahead), set autoApply: true and the system will execute all actions immediately.
+
+Action params:
+- assign_driver: { "driverId": string, "driverName": string }
+- assign_truck: { "truckId": string, "truckName": string }
+- mark_complete: {}
+- mark_delayed: {}
+- reschedule: { "newDate": "YYYY-MM-DD", "newTime": "HH:MM" (optional) }
+- swap_truck: { "newTruckId": string, "newTruckName": string }
+- swap_driver: { "newDriverId": string, "newDriverName": string }
+
+Use exact IDs from the schedule context. If you only have names, use truckName/driverName and the system will resolve to IDs.`,
+    messages,
   });
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '';
   const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  return JSON.parse(cleaned);
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      type: parsed.type ?? 'query',
+      message: parsed.message ?? '',
+      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+      autoApply: !!parsed.autoApply,
+    };
+  } catch {
+    return {
+      type: 'query',
+      message: cleaned || 'Could not parse response.',
+      actions: [],
+      autoApply: false,
+    };
+  }
 }
 
 

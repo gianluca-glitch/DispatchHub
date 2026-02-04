@@ -3,12 +3,12 @@
 // Server data lives in React Query / SWR — this is for UI-only state
 
 import { create } from 'zustand';
-import type { PreviewAssignment, ScenarioInput, ScenarioResult, JobAnalysis, JobAnalysisFeedEntry } from '@/types';
+import type { PreviewAssignment, ScenarioInput, ScenarioResult, JobAnalysis, JobAnalysisFeedEntry, VoiceCommandActionItem } from '@/types';
 
 export type SidebarMessage = {
   role: 'user' | 'assistant';
   content: string;
-  type?: 'text' | 'scenario' | 'update' | 'query';
+  type?: 'text' | 'scenario' | 'update' | 'query' | 'agentic';
   data?: unknown;
 };
 
@@ -136,6 +136,9 @@ interface CommandCenterStore {
   sidebarMessages: SidebarMessage[];
   addSidebarMessage: (msg: SidebarMessage) => void;
   clearSidebarMessages: () => void;
+  lastSuggestedActions: VoiceCommandActionItem[] | null;
+  setLastSuggestedActions: (actions: VoiceCommandActionItem[] | null) => void;
+  clearLastSuggestedActions: () => void;
 
   activeScenario: ScenarioInput | null;
   scenarioResult: ScenarioResult | null;
@@ -185,6 +188,7 @@ const defaultCommandCenter = {
   showAllRoutes: true,
   sidebarOpen: true,
   sidebarMessages: [] as SidebarMessage[],
+  lastSuggestedActions: null as VoiceCommandActionItem[] | null,
   activeScenario: null as ScenarioInput | null,
   scenarioResult: null as ScenarioResult | null,
   scenarioLoading: false,
@@ -218,6 +222,8 @@ export const useCommandCenterStore = create<CommandCenterStore>((set, get) => ({
   addSidebarMessage: (msg) =>
     set((state) => ({ sidebarMessages: [...state.sidebarMessages, msg] })),
   clearSidebarMessages: () => set({ sidebarMessages: [] }),
+  setLastSuggestedActions: (actions) => set({ lastSuggestedActions: actions }),
+  clearLastSuggestedActions: () => set({ lastSuggestedActions: null }),
 
   setScenario: (scenario) => set({ activeScenario: scenario }),
   setScenarioResult: (result) => set({ scenarioResult: result }),

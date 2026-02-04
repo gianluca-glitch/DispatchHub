@@ -461,3 +461,28 @@ export interface JobAnalysisFeedEntry {
   question?: string;
   answer?: string;
 }
+
+// ── AGENTIC DISPATCH AI ─────────────────────────────────────
+
+export type VoiceCommandAction =
+  | 'assign_driver'
+  | 'assign_truck'
+  | 'mark_complete'
+  | 'mark_delayed'
+  | 'reschedule'
+  | 'swap_truck'
+  | 'swap_driver';
+
+export interface VoiceCommandActionItem {
+  action: VoiceCommandAction;
+  jobId: string;
+  jobName: string;
+  params: Record<string, string>;
+}
+
+export interface AgenticVoiceResponse {
+  type: 'update' | 'scenario' | 'query';
+  message: string;
+  actions: VoiceCommandActionItem[];
+  autoApply: boolean;
+}

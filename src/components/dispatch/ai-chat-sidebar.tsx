@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MessageSquare, PanelRightClose, PanelRightOpen, Send, Loader2 } from 'lucide-react';
+import { MessageSquare, PanelRightClose, PanelRightOpen, Send, Loader2, Truck, User, Check, Clock } from 'lucide-react';
 import { useCommandCenterStore } from '@/stores';
 import { useTrucks, useWorkers, useScheduleConflicts } from '@/hooks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { ScenarioResult } from '@/types';
+import type { ScenarioResult, VoiceCommandActionItem } from '@/types';
 import { cn } from '@/lib/utils';
 
 export interface AiChatSidebarProps {
@@ -78,10 +78,50 @@ function ScenarioCardInline({
 
 function conflictStatusMessage(conflicts: { message: string }[]): string {
   if (conflicts.length === 0) {
-    return '✅ No scheduling conflicts for today. All clear.';
+    return '✅ All clear for today. What do you need?';
   }
-  const lines = ['⚠️ Schedule conflicts detected for today:', ...conflicts.map((c) => `• ${c.message}`), 'Want me to suggest fixes?'];
+  const lines = ['⚠️ Schedule conflicts detected for today:', ...conflicts.map((c) => `• ${c.message}`), "I can fix these. Say 'fix it' or tell me what to change."];
   return lines.join('\n');
+}
+
+function getActionIcon(action: VoiceCommandActionItem['action']) {
+  switch (action) {
+    case 'assign_truck':
+    case 'swap_truck':
+      return Truck;
+    case 'assign_driver':
+    case 'swap_driver':
+      return User;
+    case 'mark_complete':
+    case 'mark_delayed':
+      return Check;
+    case 'reschedule':
+      return Clock;
+    default:
+      return Check;
+  }
+}
+
+function getActionLabel(act: VoiceCommandActionItem): string {
+  const p = act.params ?? {};
+  switch (act.action) {
+    case 'assign_truck':
+      return `Assign Truck: ${act.jobName} → ${p.truckName ?? p.truckId ?? '?'}`;
+    case 'assign_driver':
+      return `Assign Driver: ${act.jobName} → ${p.driverName ?? p.driverId ?? '?'}`;
+    case 'swap_truck':
+      return `Swap Truck: ${act.jobName} → ${p.newTruckName ?? p.newTruckId ?? '?'}`;
+    case 'swap_driver':
+      return `Swap Driver: ${act.jobName} → ${p.newDriverName ?? p.newDriverId ?? '?'}`;
+    case 'mark_complete':
+      return `Mark Complete: ${act.jobName}`;
+    case 'mark_delayed':
+      return `Mark Delayed: ${act.jobName}`;
+    case 'reschedule':
+      return `Reschedule: ${act.jobName} → ${p.newDate ?? '?'}${p.newTime ? ` ${p.newTime}` : ''}`;
+    default:
+      return `${act.action}: ${act.jobName}`;
+  }
 }
 
 export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
@@ -92,6 +132,8 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     addSidebarMessage,
     triggerDispatchRefetch,
     dispatchRefetchTrigger,
+    setLastSuggestedActions,
+    clearLastSuggestedActions,
   } = useCommandCenterStore();
 
   const { data: trucksData } = useTrucks();
@@ -124,23 +166,56 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     addSidebarMessage({ role: 'assistant', content, type: 'text' });
   }, [selectedDate, conflicts, conflictsLoading, addSidebarMessage]);
 
-  const sendMessage = async () => {
-    const text = input.trim();
+  const buildConversationHistory = (): { role: string; content: string }[] => {
+    return sidebarMessages.slice(-10).map((m) => ({
+      role: m.role,
+      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+    }));
+  };
+
+  const sendMessage = async (overrideText?: string) => {
+    const text = (overrideText ?? input.trim()).trim();
     if (!text || loading) return;
-    setInput('');
+    const history = buildConversationHistory();
+    if (!overrideText) setInput('');
     addSidebarMessage({ role: 'user', content: text, type: 'text' });
     setLoading(true);
+    clearLastSuggestedActions();
     try {
       const res = await fetch('/api/dispatch/voice-command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, date: selectedDate }),
+        body: JSON.stringify({
+          text,
+          date: selectedDate,
+          conversationHistory: history,
+        }),
       });
       const json = await res.json();
 
       if (!res.ok) throw new Error(json.error ?? 'Command failed');
 
-      if (json.type === 'scenario') {
+      const hasActions = Array.isArray(json.actions) && json.actions.length > 0;
+      if (hasActions) setLastSuggestedActions(json.actions);
+
+      if (hasActions) {
+        addSidebarMessage({
+          role: 'assistant',
+          content: json.message ?? '',
+          type: 'agentic',
+          data: {
+            message: json.message,
+            actions: json.actions,
+            autoApply: json.autoApply ?? false,
+            applied: json.applied ?? false,
+            appliedCount: json.appliedCount ?? 0,
+          },
+        });
+        if (json.applied) {
+          clearLastSuggestedActions();
+          triggerDispatchRefetch();
+        }
+      } else if (json.type === 'scenario' && json.result) {
         const result = json.result as ScenarioResult;
         addSidebarMessage({
           role: 'assistant',
@@ -148,7 +223,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
           type: 'scenario',
           data: result,
         });
-      } else if (json.type === 'update') {
+      } else if (json.type === 'update' && json.result) {
         const msg = json.result?.message ?? 'Done';
         addSidebarMessage({
           role: 'assistant',
@@ -158,11 +233,10 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
         });
         triggerDispatchRefetch();
       } else {
-        const answer = json.result?.answer ?? json.result;
-        const display = answer != null ? String(answer) : '';
+        const display = json.message ?? json.result?.answer ?? json.result ?? '';
         addSidebarMessage({
           role: 'assistant',
-          content: display || 'No response.',
+          content: display ? String(display) : 'No response.',
           type: 'query',
         });
       }
@@ -175,6 +249,10 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleApplyAll = async () => {
+    await sendMessage('apply');
   };
 
   const handleApplyScenario = async (result: ScenarioResult) => {
@@ -225,6 +303,15 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     }));
   };
 
+  const dismissAgenticActions = (index: number) => {
+    useCommandCenterStore.setState((s) => ({
+      sidebarMessages: s.sidebarMessages.map((m, i) =>
+        i === index && m.type === 'agentic' ? { ...m, type: 'query' as const, data: undefined } : m
+      ),
+    }));
+    clearLastSuggestedActions();
+  };
+
   if (!sidebarOpen) {
     return (
       <div className="w-12 shrink-0 flex flex-col items-center py-2 border-l border-border bg-surface-0">
@@ -265,6 +352,74 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
               <div key={i} className="flex justify-end">
                 <div className="max-w-[85%] px-3 py-2 rounded-lg rounded-tr-sm bg-amber/20 text-amber border border-amber/30 text-sm">
                   {msg.content}
+                </div>
+              </div>
+            );
+          }
+          if (msg.type === 'agentic' && msg.data) {
+            const { message, actions, autoApply, applied, appliedCount } = msg.data as {
+              message: string;
+              actions: VoiceCommandActionItem[];
+              autoApply: boolean;
+              applied: boolean;
+              appliedCount: number;
+            };
+            return (
+              <div key={i} className="flex justify-start">
+                <div className="max-w-[95%] w-full space-y-2">
+                  <div className="px-3 py-2 rounded-lg rounded-tl-sm bg-surface-2 text-text-1 border border-border text-sm">
+                    {message}
+                  </div>
+                  {actions?.length > 0 && (
+                    <div className="space-y-1.5">
+                      {actions.map((act, ai) => {
+                        const Icon = getActionIcon(act.action);
+                        return (
+                          <div
+                            key={ai}
+                            className={cn(
+                              'flex items-center gap-2 px-3 py-2 rounded-lg border text-sm',
+                              applied
+                                ? 'bg-success/10 border-success/30 text-success'
+                                : 'bg-surface-1 border-border text-text-1'
+                            )}
+                          >
+                            {applied ? (
+                              <Check className="h-4 w-4 shrink-0 text-success" />
+                            ) : (
+                              <Icon className="h-4 w-4 shrink-0 text-amber" />
+                            )}
+                            <span>{getActionLabel(act)}</span>
+                          </div>
+                        );
+                      })}
+                      {autoApply && applied ? (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 text-success text-sm">
+                          <Check className="h-4 w-4" />
+                          <span>Applied {appliedCount} changes</span>
+                        </div>
+                      ) : !autoApply && actions.length > 0 ? (
+                        <div className="flex gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            className="w-full bg-amber text-black hover:bg-amber/90"
+                            onClick={handleApplyAll}
+                            disabled={loading}
+                          >
+                            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Apply All'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="border-border text-text-2"
+                            onClick={() => dismissAgenticActions(i)}
+                          >
+                            Dismiss
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -320,7 +475,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
         <Button
           size="icon"
           className="h-9 w-9 shrink-0 bg-amber text-black hover:bg-amber/90"
-          onClick={sendMessage}
+          onClick={() => sendMessage()}
           disabled={loading || !input.trim()}
         >
           {loading ? (
