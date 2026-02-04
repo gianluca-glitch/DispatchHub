@@ -22,6 +22,16 @@ const SCENARIO_INTENTS: Intent[] = [
   'SWAP_WORKER', // maps to SWAP_DRIVER scenario
 ];
 
+interface JobContextBody {
+  id?: string;
+  customer?: string;
+  address?: string;
+  truckId?: string;
+  truckName?: string;
+  driverId?: string;
+  driverName?: string;
+}
+
 // POST /api/dispatch/voice-command
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -29,6 +39,7 @@ export async function POST(req: NextRequest) {
   const dateParam = (body.date as string) ?? new Date().toISOString().slice(0, 10);
   const date = new Date(dateParam + 'T12:00:00');
   const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const jobContext = body.jobContext as JobContextBody | null | undefined;
 
   if (!text) {
     return NextResponse.json({ error: 'text required' }, { status: 400 });
@@ -48,7 +59,7 @@ export async function POST(req: NextRequest) {
     db.worker.findMany(),
   ]);
 
-  const scheduleContext = [
+  const scheduleContextParts = [
     'Jobs today:',
     ...jobs.map(
       (j) =>
@@ -56,7 +67,14 @@ export async function POST(req: NextRequest) {
     ),
     'Trucks: ' + trucks.map((t) => t.name).join(', '),
     'Workers: ' + workers.map((w) => w.name).join(', '),
-  ].join('\n');
+  ];
+  if (jobContext && (jobContext.id || jobContext.customer)) {
+    scheduleContextParts.unshift(
+      'FOCUS JOB (user is asking about this specific job): ' +
+        `id=${jobContext.id ?? '?'} | customer=${jobContext.customer ?? '?'} | address=${jobContext.address ?? '?'} | truck=${jobContext.truckName ?? jobContext.truckId ?? '?'} | driver=${jobContext.driverName ?? jobContext.driverId ?? '?'}.`
+    );
+  }
+  const scheduleContext = scheduleContextParts.join('\n');
 
   let parsed: {
     intent: string;
@@ -101,6 +119,10 @@ export async function POST(req: NextRequest) {
     return w?.id ?? null;
   };
   const resolveJob = (identifier: string | null | undefined): (typeof jobs)[0] | null => {
+    if (jobContext?.id) {
+      const byId = jobs.find((x) => x.id === jobContext.id);
+      if (byId) return byId;
+    }
     if (!identifier) return null;
     const id = identifier.toLowerCase();
     const j = jobs.find(

@@ -23,6 +23,7 @@ const JOB_TYPE_PILL: Record<JobType, string> = {
   DROP_OFF: 'bg-success/20 text-success border-success/40',
   DUMP_OUT: 'bg-amber/20 text-amber border-amber/40',
   SWAP: 'bg-purple/20 text-purple border-purple/40',
+  HAUL: 'bg-surface-2 text-text-2 border-border',
 };
 
 const JOB_STATUS_PILL: Record<JobStatus, string> = {

@@ -442,3 +442,104 @@ No markdown, no explanation. JSON only.`;
     return { score: 0, oneliner: 'Unable to rate assignment.', proceed: false };
   }
 }
+
+// ─── JOB DASHBOARD: ANALYZE JOB ──────────────────────────────
+// Returns structured analysis for a specific job in context of full day schedule
+
+export interface AnalyzeJobInput {
+  job: {
+    id: string;
+    customer: string;
+    address: string;
+    borough: string;
+    date: string;
+    time: string;
+    type: string;
+    status: string;
+    truckId: string | null;
+    truckName: string | null;
+    driverId: string | null;
+    driverName: string | null;
+    notes: string | null;
+  };
+  action: 'initial' | 'swap_truck' | 'swap_driver' | 'reschedule' | 'freeform';
+  proposedTruckId?: string | null;
+  proposedTruckName?: string | null;
+  proposedDriverId?: string | null;
+  proposedDriverName?: string | null;
+  todayJobs: Array<{
+    id: string;
+    customer: string;
+    address: string;
+    borough: string;
+    time: string;
+    truckId: string | null;
+    truckName: string | null;
+    driverId: string | null;
+    driverName: string | null;
+  }>;
+  truckRoutes: Array<{
+    truckId: string;
+    truckName: string;
+    stops: Array<{ jobId: string; customer: string; address: string; borough: string; time: string }>;
+  }>;
+  workers: Array<{ id: string; name: string; role: string; status: string; todayJobCount: number }>;
+  trucks: Array<{ id: string; name: string; type: string; status: string; todayJobCount: number }>;
+}
+
+export type JobAnalysisResult = import('@/types').JobAnalysis;
+
+export async function analyzeJob(input: AnalyzeJobInput): Promise<JobAnalysisResult> {
+  const system = `You are the dispatch analysis engine for EDCC Services Corp, a NYC demolition and carting company.
+
+Analyze the FOCUS JOB in context of today's full schedule. Consider:
+- Double-bookings (same truck or driver at same time)
+- Route impact (travel time, borough clustering)
+- Load balancing (trucks/drivers with too many jobs)
+- Consolidation opportunities (nearby jobs, same borough)
+
+Return ONLY valid JSON with this exact schema:
+{
+  "conflicts": string[] (each under 30 words - scheduling conflicts for this job),
+  "recommendations": string[] (each under 30 words - proactive suggestions),
+  "warnings": string[] (each under 30 words - potential issues),
+  "impactSummary": string (one line, under 40 words - e.g. "Swapping to Truck 6 adds 15min to route, no conflicts"),
+  "workerRecs": [{ "workerId": string, "name": string, "score": number (0-100), "reason": string (under 25 words) }]
+}
+
+- conflicts: red-bordered card (double-book, overlap, conflict)
+- recommendations: green-bordered (move job, consolidate, optimize)
+- warnings: yellow-bordered (heavy load, long route, risk)
+- impactSummary: one sentence for map/header
+- workerRecs: top 3–5 workers for this job with score and short reason
+
+No markdown, no code fences. JSON only.`;
+
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    system,
+    messages: [{ role: 'user', content: `Analyze this job:\n\n${JSON.stringify(input, null, 2)}` }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      conflicts: Array.isArray(parsed.conflicts) ? parsed.conflicts : [],
+      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+      warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+      impactSummary: typeof parsed.impactSummary === 'string' ? parsed.impactSummary : '',
+      workerRecs: Array.isArray(parsed.workerRecs) ? parsed.workerRecs : [],
+    };
+  } catch {
+    return {
+      conflicts: [],
+      recommendations: [],
+      warnings: [],
+      impactSummary: cleaned.slice(0, 80) || 'Analysis unavailable.',
+      workerRecs: [],
+    };
+  }
+}

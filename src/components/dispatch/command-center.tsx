@@ -5,7 +5,6 @@ import { useCommandCenterStore } from '@/stores';
 import { useRoutes } from '@/hooks';
 import { RouteMap } from './route-map';
 import { ResourceCards } from './resource-cards';
-import { ScenarioPanel } from './scenario-panel';
 
 export interface CommandCenterProps {
   selectedDate: string;
@@ -40,9 +39,6 @@ export function CommandCenter({ selectedDate, onJobSelect, onApplied }: CommandC
       </div>
       <div className="flex-shrink-0 p-3 pt-0">
         <ResourceCards routes={routes} />
-      </div>
-      <div className="flex-shrink-0 min-h-0 flex flex-col">
-        <ScenarioPanel selectedDate={selectedDate} onApplied={handleApplied} />
       </div>
     </div>
   );

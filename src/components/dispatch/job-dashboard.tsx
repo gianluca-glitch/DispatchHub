@@ -1,12 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -17,25 +11,25 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ConflictBannerList } from './conflict-banner';
-import { RouteMap } from './route-map';
-import { ScenarioPanel } from './scenario-panel';
-import { useJob, useConflicts, useWorkers, useTrucks, useRoutes } from '@/hooks';
-import { useDispatchStore, useCommandCenterStore } from '@/stores';
+import { RouteMapPanel } from './route-map-panel';
+import { WarRoomPanel } from './war-room-panel';
+import { useJob, useConflicts, useWorkers, useTrucks } from '@/hooks';
+import { useCommandCenterStore } from '@/stores';
 import {
   JOB_TYPE_LABELS,
   JOB_STATUS_LABELS,
   PRIORITY_LABELS,
   BOROUGH_LABELS,
+  TRUCK_TYPE_LABELS,
+  WORKER_ROLE_LABELS,
   type CartingJob,
   type JobType,
   type JobStatus,
   type Priority,
   type Borough,
-  type Conflict,
-  type AiWorkerRecommendation,
 } from '@/types';
 import { cn } from '@/lib/utils';
-import { Truck, User, Calendar, Loader2 } from 'lucide-react';
+import { Truck, User, Calendar, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 export interface JobDashboardProps {
@@ -45,7 +39,6 @@ export interface JobDashboardProps {
   onApplied?: () => void;
 }
 
-// Normalize job date from API (ISO or YYYY-MM-DD)
 function jobDateStr(job: CartingJob): string {
   const d = job.date;
   if (!d) return '';
@@ -53,7 +46,7 @@ function jobDateStr(job: CartingJob): string {
   return (d as unknown as string).slice(0, 10);
 }
 
-const JOB_TYPES: JobType[] = ['PICKUP', 'DROP_OFF', 'DUMP_OUT', 'SWAP'];
+const JOB_TYPES: JobType[] = ['PICKUP', 'DROP_OFF', 'SWAP', 'DUMP_OUT', 'HAUL'];
 const JOB_STATUSES: JobStatus[] = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'DELAYED'];
 const PRIORITIES: Priority[] = ['NORMAL', 'HIGH', 'URGENT'];
 const BOROUGHS: Borough[] = ['MANHATTAN', 'BROOKLYN', 'QUEENS', 'BRONX', 'STATEN_ISLAND'];
@@ -63,58 +56,30 @@ export function JobDashboard({ jobId, date, onClose, onApplied }: JobDashboardPr
   const { data: conflictsData, refetch: refetchConflicts } = useConflicts(jobId, date);
   const conflicts = conflictsData ?? [];
   const { data: workersData } = useWorkers();
-  const workers = workersData ?? [];
   const { data: trucksData } = useTrucks();
+  const workers = workersData ?? [];
   const trucks = trucksData ?? [];
-  const { data: routesData } = useRoutes(date);
-  const allRoutes = routesData ?? [];
-  const jobTruckRoute = job?.truckId
-    ? allRoutes.filter((r) => r.truckId === job.truckId)
-    : [];
-
-  const scenarioResult = useCommandCenterStore((s) => s.scenarioResult);
-  const scenarioLoading = useCommandCenterStore((s) => s.scenarioLoading);
-  const activeScenario = useCommandCenterStore((s) => s.activeScenario);
-
-  const [recommendations, setRecommendations] = useState<AiWorkerRecommendation[]>([]);
-  const [recLoading, setRecLoading] = useState(false);
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [patchLoading, setPatchLoading] = useState(false);
-  const truckSelectRef = useRef<HTMLButtonElement>(null);
-  const driverSelectRef = useRef<HTMLButtonElement>(null);
-  const dateInputRef = useRef<HTMLInputElement>(null);
-
   const open = !!jobId;
-  const setHighlightedJob = useCommandCenterStore((s) => s.setHighlightedJob);
-  const setScenario = useCommandCenterStore((s) => s.setScenario);
+  const routeDate = job ? jobDateStr(job) : date;
 
-  // Fetch worker recommendations when job opens
-  useEffect(() => {
-    if (!jobId || !job?.customer) return;
-    setRecLoading(true);
-    const jobContext = [
-      job.customer,
-      job.address,
-      job.type,
-      jobDateStr(job),
-      job.time,
-      job.notes ?? '',
-    ].join(' | ');
-    fetch('/api/workers/recommend', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobContext }),
-    })
-      .then((res) => res.json())
-      .then((json) => setRecommendations(json.data ?? []))
-      .catch(() => setRecommendations([]))
-      .finally(() => setRecLoading(false));
-  }, [jobId, job?.customer, job?.address, job?.type, job?.date, job?.time, job?.notes]);
+  const {
+    modifiedFields,
+    setModifiedField,
+    clearModifiedFields,
+    setHighlightedJob,
+    setScenario,
+    triggerDispatchRefetch,
+  } = useCommandCenterStore();
+
+  const hasModifications = Object.keys(modifiedFields).length > 0;
+  const [patchLoading, setPatchLoading] = useState(false);
 
   const refetchAll = useCallback(() => {
     refetchJob();
     refetchConflicts();
-  }, [refetchJob, refetchConflicts]);
+    if (onApplied) onApplied();
+    triggerDispatchRefetch();
+  }, [refetchJob, refetchConflicts, onApplied, triggerDispatchRefetch]);
 
   const patchJob = useCallback(
     async (payload: Record<string, unknown>) => {
@@ -128,17 +93,24 @@ export function JobDashboard({ jobId, date, onClose, onApplied }: JobDashboardPr
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? 'Update failed');
-        if (json.changed) toast.success('Job updated');
-        refetchAll();
+        if (json.changed) {
+          toast.success('Job updated');
+          clearModifiedFields();
+          refetchAll();
+        }
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Update failed');
       } finally {
         setPatchLoading(false);
-        setEditingField(null);
       }
     },
-    [jobId, refetchAll]
+    [jobId, refetchAll, clearModifiedFields]
   );
+
+  const handleSaveChanges = useCallback(() => {
+    if (!hasModifications) return;
+    patchJob(modifiedFields);
+  }, [hasModifications, modifiedFields, patchJob]);
 
   const applyFix = useCallback(
     (type: 'SWAP_TRUCK' | 'SWAP_DRIVER' | 'RESCHEDULE') => {
@@ -152,394 +124,311 @@ export function JobDashboard({ jobId, date, onClose, onApplied }: JobDashboardPr
         setScenario({ type: 'SWAP_DRIVER', affectedJobId: jobId });
         onClose();
       } else {
-        dateInputRef.current?.focus();
+        (document.querySelector('[data-field="date"]') as HTMLElement)?.focus();
       }
     },
     [jobId, onClose, setHighlightedJob, setScenario]
   );
 
-  const assignDriver = useCallback(
-    (workerId: string) => {
-      patchJob({ driverId: workerId });
-    },
-    [patchJob]
-  );
+  useEffect(() => {
+    if (!open) clearModifiedFields();
+  }, [open, clearModifiedFields]);
+
+  const displayTruckId = modifiedFields.truckId !== undefined ? modifiedFields.truckId : job?.truckId ?? null;
+  const displayDriverId = modifiedFields.driverId !== undefined ? modifiedFields.driverId : job?.driverId ?? null;
+  const effectiveTruck = displayTruckId ? trucks.find((t) => t.id === displayTruckId) : null;
+  const effectiveDriver = displayDriverId ? workers.find((w) => w.id === displayDriverId) : null;
 
   if (!open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col bg-surface-0 border-border">
-        <DialogHeader>
-          <DialogTitle className="text-text-0">Job details</DialogTitle>
-        </DialogHeader>
+    <div className="fixed inset-0 z-40 bg-background flex flex-col">
+      {/* Top bar — 48px */}
+      <div className="h-12 shrink-0 flex items-center justify-between border-b border-border px-4 bg-surface-0">
+        <div className="flex items-center gap-3 min-w-0">
+          {jobLoading || !job ? (
+            <span className="text-text-2 text-sm">Loading…</span>
+          ) : (
+            <>
+              <span className="font-semibold text-text-0 truncate">
+                {job.customer} — {job.address}
+              </span>
+              <span className="rounded bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-2 shrink-0">
+                {job.borough ? BOROUGH_LABELS[job.borough] : '—'}
+              </span>
+              <span className="font-mono text-sm text-text-2 shrink-0">{job.time}</span>
+              <span className="rounded bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-2 shrink-0">
+                {job.status ? JOB_STATUS_LABELS[job.status] : '—'}
+              </span>
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-3 shrink-0 text-sm text-text-2">
+          {effectiveTruck && <span>{effectiveTruck.name}</span>}
+          {effectiveDriver && <span>{effectiveDriver.name}</span>}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="shrink-0 text-text-2 hover:text-text-0 hover:bg-surface-2"
+          onClick={onClose}
+        >
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
 
-        {jobLoading || !job ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-amber" />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4 min-h-0 flex-1 overflow-hidden">
-            {/* 60/40: job details left, route map right */}
-            <div className="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-4 min-h-0 flex-1">
-              <div className="flex flex-col gap-4 overflow-y-auto pr-2 min-h-0">
-                {/* Conflict banners */}
-                <ConflictBannerList conflicts={conflicts} />
+      {jobLoading || !job ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-amber" />
+        </div>
+      ) : (
+        <div className="flex-1 grid grid-cols-[30%_40%_30%] min-h-0">
+          {/* LEFT PANEL — 30%: Job details & manual edit */}
+          <div className="flex flex-col border-r border-border overflow-y-auto bg-surface-0 min-w-0">
+            <div className="p-4 space-y-6">
+              <ConflictBannerList conflicts={conflicts} />
 
-            {/* AI fix options */}
-            {conflicts.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="border-amber/40 text-amber hover:bg-amber/10"
-                  onClick={() => applyFix('SWAP_TRUCK')}
-                >
-                  <Truck className="h-3.5 w-3.5 mr-1" />
-                  Swap truck
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="border-amber/40 text-amber hover:bg-amber/10"
-                  onClick={() => applyFix('SWAP_DRIVER')}
-                >
-                  <User className="h-3.5 w-3.5 mr-1" />
-                  Swap driver
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="border-amber/40 text-amber hover:bg-amber/10"
-                  onClick={() => applyFix('RESCHEDULE')}
-                >
-                  <Calendar className="h-3.5 w-3.5 mr-1" />
-                  Reschedule
-                </Button>
-              </div>
-            )}
-
-            {/* Job fields grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
-              <FieldRow label="Type">
-                <Select
-                  value={job.type}
-                  onValueChange={(v) => patchJob({ type: v })}
-                  disabled={patchLoading}
-                >
-                  <SelectTrigger className="h-9 bg-surface-1 border-border font-mono">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {JOB_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {JOB_TYPE_LABELS[t]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldRow>
-
-              <FieldRow label="Status">
-                <Select
-                  value={job.status}
-                  onValueChange={(v) => patchJob({ status: v })}
-                  disabled={patchLoading}
-                >
-                  <SelectTrigger className="h-9 bg-surface-1 border-border font-mono">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {JOB_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {JOB_STATUS_LABELS[s]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldRow>
-
-              <FieldRow label="Customer">
-                {editingField === 'customer' ? (
-                  <Input
-                    className="h-9 font-mono bg-surface-1"
-                    defaultValue={job.customer}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim();
-                      if (v && v !== job.customer) patchJob({ customer: v });
-                      setEditingField(null);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                    autoFocus
-                  />
-                ) : (
-                  <ValueCell
-                    value={job.customer}
-                    onClick={() => setEditingField('customer')}
-                  />
-                )}
-              </FieldRow>
-
-              <FieldRow label="Address">
-                {editingField === 'address' ? (
-                  <Input
-                    className="h-9 font-mono bg-surface-1"
-                    defaultValue={job.address}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim();
-                      if (v && v !== job.address) patchJob({ address: v });
-                      setEditingField(null);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                    autoFocus
-                  />
-                ) : (
-                  <ValueCell
-                    value={job.address}
-                    onClick={() => setEditingField('address')}
-                  />
-                )}
-              </FieldRow>
-
-              <FieldRow label="Borough">
-                <Select
-                  value={job.borough}
-                  onValueChange={(v) => patchJob({ borough: v })}
-                  disabled={patchLoading}
-                >
-                  <SelectTrigger className="h-9 bg-surface-1 border-border font-mono">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BOROUGHS.map((b) => (
-                      <SelectItem key={b} value={b}>
-                        {BOROUGH_LABELS[b]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldRow>
-
-              <FieldRow label="Date">
-                <Input
-                  ref={dateInputRef}
-                  type="date"
-                  className="h-9 font-mono bg-surface-1"
-                  value={jobDateStr(job)}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v && v !== jobDateStr(job)) patchJob({ date: v });
-                  }}
-                  disabled={patchLoading}
-                />
-              </FieldRow>
-
-              <FieldRow label="Time">
-                {editingField === 'time' ? (
-                  <Input
-                    className="h-9 font-mono bg-surface-1 w-24"
-                    defaultValue={job.time}
-                    placeholder="HH:MM"
-                    onBlur={(e) => {
-                      const v = e.target.value.trim();
-                      if (v && v !== job.time) patchJob({ time: v });
-                      setEditingField(null);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                    autoFocus
-                  />
-                ) : (
-                  <ValueCell
-                    value={job.time}
-                    onClick={() => setEditingField('time')}
-                    className="font-mono"
-                  />
-                )}
-              </FieldRow>
-
-              <FieldRow label="Container">
-                {editingField === 'containerSize' ? (
-                  <Input
-                    className="h-9 font-mono bg-surface-1 w-24"
-                    defaultValue={job.containerSize ?? ''}
-                    placeholder="20yd"
-                    onBlur={(e) => {
-                      const v = e.target.value.trim() || null;
-                      if (v !== (job.containerSize ?? null)) patchJob({ containerSize: v });
-                      setEditingField(null);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                    autoFocus
-                  />
-                ) : (
-                  <ValueCell
-                    value={job.containerSize ?? '—'}
-                    onClick={() => setEditingField('containerSize')}
-                  />
-                )}
-              </FieldRow>
-
-              <FieldRow label="Priority">
-                <Select
-                  value={job.priority}
-                  onValueChange={(v) => patchJob({ priority: v })}
-                  disabled={patchLoading}
-                >
-                  <SelectTrigger className="h-9 bg-surface-1 border-border font-mono">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PRIORITIES.map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {PRIORITY_LABELS[p]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldRow>
-
-              <FieldRow label="Truck" fullWidth>
-                <Select
-                  value={job.truckId ?? '__none__'}
-                  onValueChange={(v) => patchJob({ truckId: v === '__none__' ? null : v })}
-                  disabled={patchLoading}
-                >
-                  <SelectTrigger
-                    ref={truckSelectRef}
-                    className="h-9 bg-surface-1 border-border font-mono"
-                  >
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Unassigned</SelectItem>
-                    {trucks.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldRow>
-
-              <FieldRow label="Driver" fullWidth>
-                <Select
-                  value={job.driverId ?? '__none__'}
-                  onValueChange={(v) => patchJob({ driverId: v === '__none__' ? null : v })}
-                  disabled={patchLoading}
-                >
-                  <SelectTrigger
-                    ref={driverSelectRef}
-                    className="h-9 bg-surface-1 border-border font-mono"
-                  >
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Unassigned</SelectItem>
-                    {workers.map((w) => (
-                      <SelectItem key={w.id} value={w.id}>
-                        {w.name} ({w.role})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldRow>
-
-              <FieldRow label="Notes" fullWidth>
-                {editingField === 'notes' ? (
-                  <Input
-                    className="h-9 bg-surface-1"
-                    defaultValue={job.notes ?? ''}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim() || null;
-                      if (v !== (job.notes ?? null)) patchJob({ notes: v });
-                      setEditingField(null);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-                    autoFocus
-                  />
-                ) : (
-                  <ValueCell
-                    value={job.notes ?? '—'}
-                    onClick={() => setEditingField('notes')}
-                  />
-                )}
-              </FieldRow>
-            </div>
-
-            {/* Worker recommendations */}
-            <div className="border-t border-border pt-4 mt-2">
-              <h4 className="text-xs font-semibold text-text-2 uppercase tracking-wider mb-2">
-                Worker recommendations
-              </h4>
-              {recLoading ? (
-                <div className="flex items-center gap-2 text-text-3 text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading…
-                </div>
-              ) : recommendations.length === 0 ? (
-                <p className="text-text-3 text-sm">No recommendations</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {recommendations.slice(0, 3).map((rec) => (
-                    <div
-                      key={rec.workerId}
-                      className="flex items-center justify-between gap-2 rounded border border-border bg-surface-1 px-3 py-2 text-sm"
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 text-sm">
+                  <FieldRow label="Type" modified={false}>
+                    <Select
+                      value={job.type}
+                      onValueChange={(v) => patchJob({ type: v })}
+                      disabled={patchLoading}
                     >
-                      <div>
-                        <span className="text-text-0 font-medium">
-                          {(rec as any).worker?.name ?? rec.workerId}
-                        </span>
-                        <span className="text-text-3 ml-2">Score: {rec.score}</span>
-                        {rec.reasons?.length > 0 && (
-                          <p className="text-text-3 text-xs mt-0.5">{rec.reasons[0]}</p>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-amber/40 text-amber hover:bg-amber/10"
-                        onClick={() => assignDriver(rec.workerId)}
-                        disabled={patchLoading}
-                      >
-                        Assign
-                      </Button>
-                    </div>
-                  ))}
+                      <SelectTrigger className="h-9 bg-surface-1 border-border font-mono">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {JOB_TYPES.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {JOB_TYPE_LABELS[t]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FieldRow>
+                  <FieldRow label="Status" modified={false}>
+                    <Select
+                      value={job.status}
+                      onValueChange={(v) => patchJob({ status: v })}
+                      disabled={patchLoading}
+                    >
+                      <SelectTrigger className="h-9 bg-surface-1 border-border font-mono">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {JOB_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {JOB_STATUS_LABELS[s]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FieldRow>
+                  <FieldRow label="Customer" modified={false}>
+                    <Input
+                      className="h-9 font-mono bg-surface-1 read-only:opacity-80"
+                      value={job.customer}
+                      readOnly
+                    />
+                  </FieldRow>
+                  <FieldRow label="Address" modified={false}>
+                    <Input
+                      className="h-9 font-mono bg-surface-1 read-only:opacity-80"
+                      value={job.address}
+                      readOnly
+                    />
+                  </FieldRow>
+                  <FieldRow label="Borough" modified={false}>
+                    <Select
+                      value={job.borough}
+                      onValueChange={(v) => patchJob({ borough: v })}
+                      disabled={patchLoading}
+                    >
+                      <SelectTrigger className="h-9 bg-surface-1 border-border font-mono">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BOROUGHS.map((b) => (
+                          <SelectItem key={b} value={b}>
+                            {BOROUGH_LABELS[b]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FieldRow>
+                  <FieldRow label="Date" modified={false}>
+                    <Input
+                      data-field="date"
+                      type="date"
+                      className="h-9 font-mono bg-surface-1"
+                      value={jobDateStr(job)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v && v !== jobDateStr(job)) patchJob({ date: v });
+                      }}
+                      disabled={patchLoading}
+                    />
+                  </FieldRow>
+                  <FieldRow label="Time" modified={false}>
+                    <Input
+                      type="text"
+                      className="h-9 font-mono bg-surface-1 w-24"
+                      defaultValue={job.time}
+                      placeholder="HH:MM"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v && v !== job.time) patchJob({ time: v });
+                      }}
+                      disabled={patchLoading}
+                    />
+                  </FieldRow>
+                  <FieldRow label="Container Size" modified={false}>
+                    <Input
+                      className="h-9 font-mono bg-surface-1"
+                      defaultValue={job.containerSize ?? ''}
+                      placeholder="20yd"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim() || null;
+                        if (v !== (job.containerSize ?? null)) patchJob({ containerSize: v });
+                      }}
+                      disabled={patchLoading}
+                    />
+                  </FieldRow>
+                  <FieldRow label="Priority" modified={false}>
+                    <Select
+                      value={job.priority}
+                      onValueChange={(v) => patchJob({ priority: v })}
+                      disabled={patchLoading}
+                    >
+                      <SelectTrigger className="h-9 bg-surface-1 border-border font-mono">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PRIORITIES.map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {PRIORITY_LABELS[p]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FieldRow>
+                  <FieldRow label="Truck" fullWidth modified={modifiedFields.truckId !== undefined}>
+                    <Select
+                      value={displayTruckId ?? '__none__'}
+                      onValueChange={(v) => setModifiedField('truckId', v === '__none__' ? null : v)}
+                      disabled={patchLoading}
+                    >
+                      <SelectTrigger className={cn('h-9 bg-surface-1 border-border font-mono', modifiedFields.truckId !== undefined && 'ring-1 ring-amber/50')}>
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Unassigned</SelectItem>
+                        {trucks.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name} ({TRUCK_TYPE_LABELS[t.type]})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FieldRow>
+                  <FieldRow label="Driver" fullWidth modified={modifiedFields.driverId !== undefined}>
+                    <Select
+                      value={displayDriverId ?? '__none__'}
+                      onValueChange={(v) => setModifiedField('driverId', v === '__none__' ? null : v)}
+                      disabled={patchLoading}
+                    >
+                      <SelectTrigger className={cn('h-9 bg-surface-1 border-border font-mono', modifiedFields.driverId !== undefined && 'ring-1 ring-amber/50')}>
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Unassigned</SelectItem>
+                        {workers.filter((w) => w.role === 'DRIVER').map((w) => (
+                          <SelectItem key={w.id} value={w.id}>
+                            {w.name} ({WORKER_ROLE_LABELS[w.role]})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FieldRow>
+                  <FieldRow label="Notes" fullWidth modified={false}>
+                    <textarea
+                      className="min-h-[72px] w-full rounded border border-border bg-surface-1 px-3 py-2 text-sm text-text-0 placeholder:text-text-3 resize-y"
+                      defaultValue={job.notes ?? ''}
+                      placeholder="Notes"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim() || null;
+                        if (v !== (job.notes ?? null)) patchJob({ notes: v });
+                      }}
+                      disabled={patchLoading}
+                    />
+                  </FieldRow>
                 </div>
-              )}
-              </div>
               </div>
 
-              {/* Right: route map for this truck's day */}
-              <div className="min-h-[280px] border border-border rounded bg-surface-0 overflow-hidden flex flex-col">
-                <h4 className="text-xs font-semibold text-text-2 uppercase tracking-wider px-3 py-2 border-b border-border shrink-0">
-                  Route — {job.truck?.name ?? 'Unassigned'}
-                </h4>
-                <div className="flex-1 min-h-0 p-2">
-                  {jobTruckRoute.length > 0 ? (
-                    <RouteMap routes={jobTruckRoute} selectedDate={date} />
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-text-3 text-sm">
-                      No route for this truck on this date
-                    </div>
-                  )}
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  className="w-full h-10 bg-amber text-black hover:bg-amber/90 font-medium"
+                  onClick={handleSaveChanges}
+                  disabled={!hasModifications || patchLoading}
+                >
+                  {patchLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Changes'}
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 border-amber/40 text-amber hover:bg-amber/10"
+                    onClick={() => applyFix('SWAP_TRUCK')}
+                  >
+                    <Truck className="h-3.5 w-3.5 mr-1" />
+                    Swap Truck
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 border-amber/40 text-amber hover:bg-amber/10"
+                    onClick={() => applyFix('SWAP_DRIVER')}
+                  >
+                    <User className="h-3.5 w-3.5 mr-1" />
+                    Swap Driver
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 border-amber/40 text-amber hover:bg-amber/10"
+                    onClick={() => applyFix('RESCHEDULE')}
+                  >
+                    <Calendar className="h-3.5 w-3.5 mr-1" />
+                    Reschedule
+                  </Button>
                 </div>
               </div>
             </div>
-
-            {/* Scenario results below when present */}
-            {(scenarioResult || scenarioLoading || activeScenario) && (
-              <div className="border-t border-border pt-3 shrink-0">
-                <ScenarioPanel selectedDate={date} onApplied={() => { onApplied?.(); refetchAll(); }} />
-              </div>
-            )}
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+
+          {/* MIDDLE PANEL — 40%: Map & route */}
+          <div className="flex flex-col min-h-0 min-w-0 border-r border-border">
+            <RouteMapPanel
+              truckId={displayTruckId}
+              truckName={effectiveTruck?.name ?? 'No truck'}
+              date={routeDate}
+            />
+          </div>
+
+          {/* RIGHT PANEL — 30%: AI war room */}
+          <div className="flex flex-col min-h-0 min-w-0">
+            <WarRoomPanel job={job} date={routeDate} />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -547,38 +436,20 @@ function FieldRow({
   label,
   children,
   fullWidth,
+  modified,
 }: {
   label: string;
   children: React.ReactNode;
   fullWidth?: boolean;
+  modified?: boolean;
 }) {
   return (
-    <div className={cn('flex flex-col gap-1', fullWidth && 'sm:col-span-2')}>
-      <span className="text-text-3 text-xs font-medium">{label}</span>
+    <div className={cn('flex flex-col gap-1', fullWidth && 'col-span-2')}>
+      <div className="flex items-center gap-2">
+        <span className="text-text-3 text-xs font-medium">{label}</span>
+        {modified && <span className="w-2 h-2 rounded-full bg-amber shrink-0" title="Modified" />}
+      </div>
       {children}
     </div>
-  );
-}
-
-function ValueCell({
-  value,
-  onClick,
-  className,
-}: {
-  value: string;
-  onClick: () => void;
-  className?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'h-9 rounded border border-transparent px-2 text-left text-text-1 hover:border-border hover:bg-surface-1 text-sm w-full',
-        className
-      )}
-    >
-      {value}
-    </button>
   );
 }

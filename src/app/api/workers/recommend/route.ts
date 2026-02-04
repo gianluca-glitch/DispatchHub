@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: [], message: 'No available workers' });
   }
 
-  const recommendations = await getWorkerRecommendations(jobContext, workers);
+  const jobContextStr = typeof jobContext === 'string' ? jobContext : JSON.stringify(jobContext);
+  const recommendations = await getWorkerRecommendations(jobContextStr, workers);
 
   // Enrich with full worker data
   const enriched = await Promise.all(

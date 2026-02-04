@@ -8,7 +8,7 @@ export type TruckType = 'BOX_TRUCK' | 'CONTAINER' | 'PACKER' | 'ROLL_OFF' | 'SER
 export type TruckStatus = 'AVAILABLE' | 'EN_ROUTE' | 'ON_SITE' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
 export type WorkerRole = 'DRIVER' | 'LABORER' | 'FOREMAN' | 'OPERATOR';
 export type WorkerStatus = 'AVAILABLE' | 'ON_SITE' | 'EN_ROUTE' | 'OFF_DUTY' | 'OUT_SICK' | 'VACATION';
-export type JobType = 'PICKUP' | 'DROP_OFF' | 'DUMP_OUT' | 'SWAP';
+export type JobType = 'PICKUP' | 'DROP_OFF' | 'DUMP_OUT' | 'SWAP' | 'HAUL';
 export type JobStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'DELAYED';
 export type Borough = 'MANHATTAN' | 'BROOKLYN' | 'QUEENS' | 'BRONX' | 'STATEN_ISLAND';
 export type IntakeSource = 'PHONE' | 'EMAIL' | 'FORM';
@@ -25,13 +25,23 @@ export const TRUCK_TYPE_LABELS: Record<TruckType, string> = {
   ROLL_OFF: 'Roll-Off', SERVICE: 'Service', VAN: 'Van',
 };
 
+export const TRUCK_STATUS_LABELS: Record<TruckStatus, string> = {
+  AVAILABLE: 'Available', EN_ROUTE: 'En Route', ON_SITE: 'On Site',
+  MAINTENANCE: 'Maintenance', OUT_OF_SERVICE: 'Out of Service',
+};
+
+export const WORKER_STATUS_LABELS: Record<WorkerStatus, string> = {
+  AVAILABLE: 'Available', ON_SITE: 'On Site', EN_ROUTE: 'En Route',
+  OFF_DUTY: 'Off Duty', OUT_SICK: 'Out Sick', VACATION: 'Vacation',
+};
+
 export const BOROUGH_LABELS: Record<Borough, string> = {
   MANHATTAN: 'Manhattan', BROOKLYN: 'Brooklyn', QUEENS: 'Queens',
   BRONX: 'Bronx', STATEN_ISLAND: 'Staten Island',
 };
 
 export const JOB_TYPE_LABELS: Record<JobType, string> = {
-  PICKUP: 'Pickup', DROP_OFF: 'Drop-Off', DUMP_OUT: 'Dump-Out', SWAP: 'Swap',
+  PICKUP: 'Pickup', DROP_OFF: 'Drop-Off', DUMP_OUT: 'Dump-Out', SWAP: 'Swap', HAUL: 'Haul',
 };
 
 export const WORKER_ROLE_LABELS: Record<WorkerRole, string> = {
@@ -415,4 +425,30 @@ export interface ResourceCard {
   todayAssignments?: number;
   available: boolean;
   inScenario: boolean;
+}
+
+// ── JOB DASHBOARD AI ANALYSIS ───────────────────────────────
+
+export interface JobAnalysisWorkerRec {
+  workerId: string;
+  name: string;
+  score: number;
+  reason: string;
+}
+
+export interface JobAnalysis {
+  conflicts: string[];
+  recommendations: string[];
+  warnings: string[];
+  impactSummary: string;
+  workerRecs: JobAnalysisWorkerRec[];
+}
+
+export interface JobAnalysisFeedEntry {
+  timestamp: Date;
+  trigger: string;
+  analysis?: JobAnalysis;
+  /** Freeform chat Q&A entry */
+  question?: string;
+  answer?: string;
 }

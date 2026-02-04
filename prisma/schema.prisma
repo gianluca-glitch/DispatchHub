@@ -204,6 +204,7 @@ enum JobType {
   DROP_OFF
   DUMP_OUT
   SWAP
+  HAUL
 }
 
 enum JobStatus {

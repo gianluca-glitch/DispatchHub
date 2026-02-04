@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, ChevronDown, Check, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Check, Loader2, X } from 'lucide-react';
 import { useCommandCenterStore } from '@/stores';
 import { useTrucks, useWorkers } from '@/hooks';
 import { Button } from '@/components/ui/button';
@@ -40,7 +40,7 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
     setScenario,
     setScenarioResult,
     setScenarioLoading,
-    reset,
+    clearScenario,
   } = useCommandCenterStore();
 
   const { data: trucksData } = useTrucks();
@@ -51,10 +51,10 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
   const [alternativesOpen, setAlternativesOpen] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
 
-  const isActive = activeScenario != null;
+  const isOpen = scenarioResult != null || activeScenario != null || scenarioLoading;
   const hasResult = scenarioResult != null;
 
-  // When activeScenario is set (e.g. from AI fix options in job dashboard), run analysis
+  // When activeScenario is set (e.g. from job dashboard "Swap truck"), run analysis
   useEffect(() => {
     if (!activeScenario || !selectedDate) return;
     setScenarioLoading(true);
@@ -71,6 +71,10 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
       })
       .finally(() => setScenarioLoading(false));
   }, [activeScenario, selectedDate, setScenarioResult, setScenarioLoading]);
+
+  const handleClose = () => {
+    clearScenario();
+  };
 
   const handleApply = async () => {
     if (!scenarioResult?.unassignedJobs?.length) return;
@@ -103,7 +107,7 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Apply failed');
-      reset();
+      clearScenario();
       onApplied();
     } finally {
       setApplyLoading(false);
@@ -121,18 +125,43 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
     }
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div
-      className={cn(
-        'flex flex-col border-t border-border bg-surface-0 overflow-hidden transition-all duration-300',
-        isActive ? 'flex-1 min-h-0' : ''
-      )}
-    >
-      {/* Results only — scenarios triggered via AI command input */}
-      {(isActive || hasResult) && (
-        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60"
+        aria-hidden
+        onClick={handleClose}
+      />
+      {/* Modal */}
+      <div
+        className="relative z-10 w-full max-w-[800px] max-h-[90vh] flex flex-col bg-surface-0 border border-border rounded-lg shadow-modal overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="scenario-title"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+          <h2 id="scenario-title" className="text-lg font-semibold text-text-0">
+            Scenario Analysis
+          </h2>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="p-2 rounded text-text-3 hover:text-text-0 hover:bg-surface-2 transition-colors"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Body — scrollable */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {scenarioLoading && (
-            <div className="flex items-center justify-center py-8 text-text-3 text-sm">
+            <div className="flex items-center justify-center py-12 text-text-3 text-sm gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
               Analyzing scenario…
             </div>
           )}
@@ -262,43 +291,45 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
                   )}
                 </div>
               )}
-
-              {/* Action bar */}
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  onClick={handleApply}
-                  disabled={applyLoading || !scenarioResult.unassignedJobs?.length}
-                >
-                  <Check className="h-3.5 w-3.5 mr-1" />
-                  Apply Changes
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="border-border text-text-2 hover:text-amber hover:border-amber/40"
-                  onClick={handleTryAnother}
-                >
-                  Try Another
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground hover:text-primary"
-                  onClick={() => reset()}
-                >
-                  <X className="h-3.5 w-3.5 mr-1" />
-                  Cancel
-                </Button>
-              </div>
             </>
           )}
         </div>
-      )}
+
+        {/* Footer — only when we have a result */}
+        {!scenarioLoading && hasResult && scenarioResult && (
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t border-border shrink-0 bg-surface-0">
+            <Button
+              type="button"
+              size="sm"
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleApply}
+              disabled={applyLoading || !scenarioResult.unassignedJobs?.length}
+            >
+              <Check className="h-3.5 w-3.5 mr-1" />
+              Apply Changes
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-border text-text-2 hover:text-amber hover:border-amber/40"
+              onClick={handleTryAnother}
+            >
+              Try Another
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-primary"
+              onClick={handleClose}
+            >
+              <X className="h-3.5 w-3.5 mr-1" />
+              Cancel
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

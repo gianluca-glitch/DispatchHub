@@ -3,7 +3,14 @@
 // Server data lives in React Query / SWR — this is for UI-only state
 
 import { create } from 'zustand';
-import type { PreviewAssignment, ScenarioInput, ScenarioResult } from '@/types';
+import type { PreviewAssignment, ScenarioInput, ScenarioResult, JobAnalysis, JobAnalysisFeedEntry } from '@/types';
+
+export type SidebarMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  type?: 'text' | 'scenario' | 'update' | 'query';
+  data?: unknown;
+};
 
 interface DispatchStore {
   selectedDate: string;                     // Current dispatch date (YYYY-MM-DD)
@@ -124,11 +131,19 @@ interface CommandCenterStore {
   highlightedJobId: string | null;
   showAllRoutes: boolean;
 
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
+  sidebarMessages: SidebarMessage[];
+  addSidebarMessage: (msg: SidebarMessage) => void;
+  clearSidebarMessages: () => void;
+
   activeScenario: ScenarioInput | null;
   scenarioResult: ScenarioResult | null;
   scenarioLoading: boolean;
   scenarioHistory: { input: ScenarioInput; result: ScenarioResult }[];
   showFloatingScenario: boolean;
+  dispatchRefetchTrigger: number;
+  triggerDispatchRefetch: () => void;
 
   selectedCards: { truckId: string | null; driverId: string | null; workerIds: string[] };
   previewJobId: string | null;
@@ -149,6 +164,18 @@ interface CommandCenterStore {
   clearCards: () => void;
   setPreviewJob: (jobId: string | null) => void;
 
+  jobAnalysis: JobAnalysis | null;
+  jobAnalysisLoading: boolean;
+  jobAnalysisFeed: JobAnalysisFeedEntry[];
+  setJobAnalysis: (a: JobAnalysis | null) => void;
+  setJobAnalysisLoading: (loading: boolean) => void;
+  addToJobAnalysisFeed: (entry: JobAnalysisFeedEntry) => void;
+  clearJobAnalysis: () => void;
+
+  modifiedFields: Record<string, any>;
+  setModifiedField: (field: string, value: any) => void;
+  clearModifiedFields: () => void;
+
   reset: () => void;
 }
 
@@ -156,13 +183,22 @@ const defaultCommandCenter = {
   selectedTruckRoutes: [] as string[],
   highlightedJobId: null as string | null,
   showAllRoutes: true,
+  sidebarOpen: true,
+  sidebarMessages: [] as SidebarMessage[],
   activeScenario: null as ScenarioInput | null,
   scenarioResult: null as ScenarioResult | null,
   scenarioLoading: false,
   scenarioHistory: [] as { input: ScenarioInput; result: ScenarioResult }[],
   showFloatingScenario: false,
+  dispatchRefetchTrigger: 0,
   selectedCards: { truckId: null as string | null, driverId: null as string | null, workerIds: [] as string[] },
   previewJobId: null as string | null,
+
+  jobAnalysis: null as JobAnalysis | null,
+  jobAnalysisLoading: false,
+  jobAnalysisFeed: [] as JobAnalysisFeedEntry[],
+
+  modifiedFields: {} as Record<string, any>,
 };
 
 export const useCommandCenterStore = create<CommandCenterStore>((set, get) => ({
@@ -178,6 +214,11 @@ export const useCommandCenterStore = create<CommandCenterStore>((set, get) => ({
   setShowAllRoutes: (show) => set({ showAllRoutes: show }),
   setHighlightedJob: (jobId) => set({ highlightedJobId: jobId }),
 
+  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  addSidebarMessage: (msg) =>
+    set((state) => ({ sidebarMessages: [...state.sidebarMessages, msg] })),
+  clearSidebarMessages: () => set({ sidebarMessages: [] }),
+
   setScenario: (scenario) => set({ activeScenario: scenario }),
   setScenarioResult: (result) => set({ scenarioResult: result }),
   setScenarioLoading: (loading) => set({ scenarioLoading: loading }),
@@ -189,6 +230,8 @@ export const useCommandCenterStore = create<CommandCenterStore>((set, get) => ({
       activeScenario: null,
       scenarioLoading: false,
     }),
+  triggerDispatchRefetch: () =>
+    set((state) => ({ dispatchRefetchTrigger: state.dispatchRefetchTrigger + 1 })),
   pushScenarioHistory: (input, result) =>
     set((state) => ({
       scenarioHistory: [...state.scenarioHistory, { input, result }],
@@ -210,6 +253,19 @@ export const useCommandCenterStore = create<CommandCenterStore>((set, get) => ({
     }),
   clearCards: () => set({ selectedCards: { truckId: null, driverId: null, workerIds: [] } }),
   setPreviewJob: (jobId) => set({ previewJobId: jobId }),
+
+  setJobAnalysis: (jobAnalysis) => set({ jobAnalysis }),
+  setJobAnalysisLoading: (jobAnalysisLoading) => set({ jobAnalysisLoading }),
+  addToJobAnalysisFeed: (entry) =>
+    set((state) => ({ jobAnalysisFeed: [...state.jobAnalysisFeed, entry] })),
+  clearJobAnalysis: () =>
+    set({ jobAnalysis: null, jobAnalysisFeed: [], jobAnalysisLoading: false }),
+
+  setModifiedField: (field, value) =>
+    set((state) => ({
+      modifiedFields: { ...state.modifiedFields, [field]: value },
+    })),
+  clearModifiedFields: () => set({ modifiedFields: {} }),
 
   reset: () => set(defaultCommandCenter),
 }));

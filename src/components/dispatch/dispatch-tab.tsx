@@ -6,7 +6,7 @@ import { useDispatchStore, useCommandCenterStore } from '@/stores';
 import { useJobs } from '@/hooks';
 import { JobRow } from './job-row';
 import { JobDashboard } from './job-dashboard';
-import { ScenarioPanel } from './scenario-panel';
+import { AiChatSidebar } from './ai-chat-sidebar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -34,11 +34,15 @@ export function DispatchTab() {
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
   const highlightedJobId = useCommandCenterStore((s) => s.highlightedJobId);
+  const dispatchRefetchTrigger = useCommandCenterStore((s) => s.dispatchRefetchTrigger);
   useEffect(() => {
     if (!highlightedJobId || !tableScrollRef.current) return;
     const row = tableScrollRef.current.querySelector(`[data-job-id="${highlightedJobId}"]`);
     (row as HTMLElement)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [highlightedJobId]);
+  useEffect(() => {
+    if (dispatchRefetchTrigger > 0) refetchJobs();
+  }, [dispatchRefetchTrigger, refetchJobs]);
 
   const stats = useMemo(() => {
     const total = jobs.length;
@@ -50,15 +54,11 @@ export function DispatchTab() {
     return { total, completed, inProgress, delayed };
   }, [jobs]);
 
-  const showFloatingScenario = useCommandCenterStore((s) => s.showFloatingScenario);
-  const scenarioResult = useCommandCenterStore((s) => s.scenarioResult);
-  const setShowFloatingScenario = useCommandCenterStore((s) => s.setShowFloatingScenario);
-  const clearScenario = useCommandCenterStore((s) => s.clearScenario);
-
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)]">
-      {/* Full width — Date, stats, job table */}
-      <div className="flex-1 flex flex-col min-w-0 w-full">
+    <div className="flex flex-col h-[calc(100vh-8rem)] flex-1 min-w-0">
+      <div className="flex flex-1 min-h-0 min-w-0">
+        {/* 70% left: Date, stats, job table */}
+        <div className="flex flex-col flex-[7] min-w-0 min-h-0 overflow-hidden pr-2">
         {/* Date picker */}
         <div className="flex items-center gap-2 mb-4">
           <Button
@@ -133,38 +133,17 @@ export function DispatchTab() {
             </table>
           )}
         </div>
+        </div>
+        <AiChatSidebar selectedDate={selectedDate} onApplied={refetchJobs} />
       </div>
 
-      {/* Job dashboard modal (includes route map + scenario panel when open) */}
+      {/* Job dashboard modal (includes route map) */}
       <JobDashboard
         jobId={selectedJobId}
         date={selectedDate}
         onClose={() => setSelectedJobId(null)}
         onApplied={refetchJobs}
       />
-
-      {/* Floating scenario panel when no job dashboard is open */}
-      {showFloatingScenario && scenarioResult && !selectedJobId && (
-        <div className="fixed bottom-4 right-4 z-50 max-w-[480px] w-full bg-surface-0 border border-border rounded shadow-lg flex flex-col max-h-[70vh] overflow-hidden">
-          <div className="flex items-center justify-between p-2 border-b border-border shrink-0">
-            <span className="text-sm font-medium text-text-0">Scenario result</span>
-            <button
-              type="button"
-              onClick={() => {
-                clearScenario();
-                setShowFloatingScenario(false);
-              }}
-              className="p-1.5 rounded text-text-3 hover:text-text-0 hover:bg-surface-2"
-              aria-label="Close"
-            >
-              ×
-            </button>
-          </div>
-          <div className="overflow-y-auto p-3">
-            <ScenarioPanel selectedDate={selectedDate} onApplied={refetchJobs} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

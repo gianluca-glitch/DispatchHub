@@ -57,12 +57,31 @@ function computePointPositions(routes: TruckRoute[]): Map<string, { x: number; y
   return out;
 }
 
+const STATUS_COLORS = {
+  COMPLETED: '#22c55e',
+  IN_PROGRESS: '#f97316',
+  SCHEDULED: '#3b82f6',
+  DELAYED: '#eab308',
+  CANCELLED: '#6b7280',
+} as const;
+
 export interface RouteMapProps {
   routes: TruckRoute[];
   selectedDate: string;
+  /** When true, dot color by job status (green/orange/blue) instead of truck color */
+  colorDotsByStatus?: boolean;
+  /** Job IDs to highlight as conflicting (red) */
+  conflictJobIds?: string[];
+  /** One-line impact summary shown below the map */
+  impactSummary?: string;
 }
 
-export function RouteMap({ routes }: RouteMapProps) {
+export function RouteMap({
+  routes,
+  colorDotsByStatus = false,
+  conflictJobIds = [],
+  impactSummary,
+}: RouteMapProps) {
   const {
     selectedTruckRoutes,
     highlightedJobId,
@@ -86,9 +105,11 @@ export function RouteMap({ routes }: RouteMapProps) {
 
   const allTruckIds = useMemo(() => routes.map((r) => r.truckId), [routes]);
   const visibleSet = useMemo(() => {
+    // When only one route is passed (e.g. job dashboard), always show it
+    if (routes.length === 1) return new Set(allTruckIds);
     const sel = showAllRoutes ? allTruckIds : selectedTruckRoutes;
     return new Set(sel);
-  }, [showAllRoutes, selectedTruckRoutes, allTruckIds]);
+  }, [routes.length, showAllRoutes, selectedTruckRoutes, allTruckIds]);
 
   const positions = useMemo(() => computePointPositions(routes), [routes]);
   const truckColorById = useMemo(() => {
@@ -178,7 +199,7 @@ export function RouteMap({ routes }: RouteMapProps) {
 
           {/* Job dots */}
           {routes.map((route) => {
-            const color = truckColorById.get(route.truckId) ?? '#f59e0b';
+            const truckColor = truckColorById.get(route.truckId) ?? '#f59e0b';
             const hidden = !visibleSet.has(route.truckId);
             return route.stops.map((stop) => {
               const pos = positions.get(stop.jobId);
@@ -186,6 +207,12 @@ export function RouteMap({ routes }: RouteMapProps) {
               const isHighlighted = highlightedJobId === stop.jobId;
               const isInProgress = stop.status === 'IN_PROGRESS';
               const isCompleted = stop.status === 'COMPLETED';
+              const isConflict = conflictJobIds.includes(stop.jobId);
+              const dotColor = isConflict
+                ? '#ef4444'
+                : colorDotsByStatus
+                  ? (STATUS_COLORS[stop.status as keyof typeof STATUS_COLORS] ?? STATUS_COLORS.SCHEDULED)
+                  : truckColor;
               const r = isInProgress ? 8 : 6;
               return (
                 <g
@@ -224,7 +251,7 @@ export function RouteMap({ routes }: RouteMapProps) {
                       cy={pos.y}
                       r={r}
                       fill="none"
-                      stroke={color}
+                      stroke={dotColor}
                       strokeWidth={2}
                     />
                   ) : (
@@ -232,7 +259,7 @@ export function RouteMap({ routes }: RouteMapProps) {
                       cx={pos.x}
                       cy={pos.y}
                       r={r}
-                      fill={color}
+                      fill={dotColor}
                       className={isInProgress ? 'animate-pulse' : ''}
                     />
                   )}
@@ -259,6 +286,13 @@ export function RouteMap({ routes }: RouteMapProps) {
           </div>
         )}
       </div>
+
+      {/* Impact summary (job dashboard) */}
+      {impactSummary && (
+        <p className="text-sm text-text-2 border-t border-border pt-2 mt-2">
+          {impactSummary}
+        </p>
+      )}
 
       {/* Truck legend */}
       <div className="flex flex-wrap items-center gap-2">

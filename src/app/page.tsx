@@ -1,14 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import {
   Truck, Users, Calendar, Inbox, FolderKanban, Settings,
-  Search, Mic, Bell, LayoutDashboard, Loader2,
+  Search, Mic, Bell, LayoutDashboard,
 } from 'lucide-react';
-import { useUiStore, useDispatchStore, useCommandCenterStore } from '@/stores';
+import { useUiStore, useDispatchStore } from '@/stores';
 import { DispatchTab } from '@/components/dispatch/dispatch-tab';
 import { IntakeTab } from '@/components/intake/intake-tab';
-import { toast } from 'sonner';
 
 // ── TAB CONFIG ──────────────────────────────────────────────
 
@@ -28,42 +27,7 @@ const TABS = [
 
 export default function Home() {
   const { activeTab, setActiveTab, showSearch, setShowSearch, showChangeLog, setShowChangeLog } = useUiStore();
-  const { micActive, setMicActive, selectedDate } = useDispatchStore();
-  const setScenarioResult = useCommandCenterStore((s) => s.setScenarioResult);
-  const setShowFloatingScenario = useCommandCenterStore((s) => s.setShowFloatingScenario);
-
-  const [commandInput, setCommandInput] = useState('');
-  const [commandLoading, setCommandLoading] = useState(false);
-
-  const submitCommand = useCallback(async () => {
-    const text = commandInput.trim();
-    if (!text || commandLoading) return;
-    setCommandLoading(true);
-    setCommandInput('');
-    try {
-      const res = await fetch('/api/dispatch/voice-command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, date: selectedDate }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Command failed');
-      if (json.type === 'scenario') {
-        setScenarioResult(json.result ?? null);
-        setShowFloatingScenario(true);
-      } else if (json.type === 'update') {
-        const msg = json.result?.message ?? 'Done';
-        toast.success(msg);
-      } else if (json.type === 'query') {
-        const answer = json.result?.answer ?? json.result;
-        if (answer) toast.info(String(answer));
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Command failed');
-    } finally {
-      setCommandLoading(false);
-    }
-  }, [commandInput, commandLoading, selectedDate, setScenarioResult, setShowFloatingScenario]);
+  const { micActive, setMicActive } = useDispatchStore();
 
   // ⌘K shortcut
   useEffect(() => {
@@ -142,24 +106,8 @@ export default function Home() {
           </nav>
         </div>
 
-        {/* Right side — Command input, Search, Mic, Changelog */}
+        {/* Right side — Search, Mic, Changelog */}
         <div className="flex items-center gap-2">
-          <div className="relative w-[400px] max-w-[min(400px,50vw)] hidden md:block">
-            <input
-              type="text"
-              value={commandInput}
-              onChange={(e) => setCommandInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && submitCommand()}
-              placeholder="Type a command... (e.g. 'truck 8 broke', 'mark Queens job done')"
-              className="w-full h-9 pl-3 pr-9 rounded bg-surface-2 border border-border text-text-0 text-sm placeholder:text-text-3 focus:outline-none focus:border-amber/50 focus:ring-1 focus:ring-amber/30"
-              disabled={commandLoading}
-            />
-            {commandLoading && (
-              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                <Loader2 className="h-4 w-4 animate-spin text-amber" />
-              </div>
-            )}
-          </div>
           <button
             onClick={() => setShowSearch(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded bg-surface-2 text-text-2 text-xs hover:text-text-0 transition-default"
