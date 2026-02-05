@@ -180,6 +180,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
   const [greetingPosted, setGreetingPosted] = useState(false);
   const prevDateRef = useRef(selectedDate);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const typingStartDateRef = useRef<string | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -189,13 +190,23 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     if (dispatchRefetchTrigger > 0) refetchScheduleConflicts();
   }, [dispatchRefetchTrigger, refetchScheduleConflicts]);
 
-  // Reset greeting when date changes
+  // Save/restore chat per date
   useEffect(() => {
     if (prevDateRef.current !== selectedDate) {
-      setGreetingPosted(false);
+      // If user has unsent text, clear it when switching dates so they don't send to wrong day
+      if (input.trim()) {
+        setInput('');
+        typingStartDateRef.current = null;
+      }
+      if (prevDateRef.current && sidebarMessages.length > 0) {
+        useCommandCenterStore.getState().setSidebarMessagesForDate(prevDateRef.current, sidebarMessages);
+      }
+      const saved = useCommandCenterStore.getState().sidebarMessagesByDate[selectedDate] ?? [];
+      useCommandCenterStore.setState({ sidebarMessages: saved });
+      setGreetingPosted(saved.length > 0);
       prevDateRef.current = selectedDate;
     }
-  }, [selectedDate]);
+  }, [selectedDate, sidebarMessages, input]);
 
   // Post greeting ONLY after we have real data (not before SWR returns)
   useEffect(() => {
@@ -215,8 +226,12 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
   };
 
   const sendMessage = async (overrideText?: string) => {
+    // Use the date from when typing started, fall back to current
+    const messageDate = typingStartDateRef.current ?? selectedDate;
     const text = (overrideText ?? input.trim()).trim();
     if (!text || loading) return;
+    // Reset typing lock
+    typingStartDateRef.current = null;
     const history = buildConversationHistory();
     if (!overrideText) setInput('');
     addSidebarMessage({ role: 'user', content: text, type: 'text' });
@@ -228,7 +243,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text,
-          date: selectedDate,
+          date: messageDate,
           conversationHistory: history,
         }),
       });
@@ -523,7 +538,18 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
       <div className="p-2 border-t border-border flex-shrink-0 flex gap-2 min-w-0">
         <Input
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setInput(val);
+            // Lock date when typing starts
+            if (val && !typingStartDateRef.current) {
+              typingStartDateRef.current = selectedDate;
+            }
+            // Clear lock when input emptied
+            if (!val) {
+              typingStartDateRef.current = null;
+            }
+          }}
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
           placeholder="Type a command..."
           className="h-9 bg-surface-2 border-border text-text-0 text-sm placeholder:text-text-3 flex-1 min-w-0"

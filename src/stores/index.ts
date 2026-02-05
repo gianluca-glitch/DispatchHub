@@ -136,6 +136,8 @@ interface CommandCenterStore {
   sidebarMessages: SidebarMessage[];
   addSidebarMessage: (msg: SidebarMessage) => void;
   clearSidebarMessages: () => void;
+  sidebarMessagesByDate: Record<string, SidebarMessage[]>;
+  setSidebarMessagesForDate: (date: string, messages: SidebarMessage[]) => void;
   /** Tracks which date we already added the initial conflict/welcome message for (avoids double "All clear" in strict mode). */
   lastConflictMessageDate: string | null;
   setLastConflictMessageDate: (date: string | null) => void;
@@ -195,6 +197,7 @@ const defaultCommandCenter = {
   showAllRoutes: true,
   sidebarOpen: true,
   sidebarMessages: [] as SidebarMessage[],
+  sidebarMessagesByDate: {} as Record<string, SidebarMessage[]>,
   lastConflictMessageDate: null as string | null,
   lastSuggestedActions: null as VoiceCommandActionItem[] | null,
   activeScenario: null as ScenarioInput | null,
@@ -232,6 +235,8 @@ export const useCommandCenterStore = create<CommandCenterStore>((set, get) => ({
   addSidebarMessage: (msg) =>
     set((state) => ({ sidebarMessages: [...state.sidebarMessages, msg] })),
   clearSidebarMessages: () => set({ sidebarMessages: [] }),
+  setSidebarMessagesForDate: (date, messages) =>
+    set((state) => ({ sidebarMessagesByDate: { ...state.sidebarMessagesByDate, [date]: messages } })),
   setLastConflictMessageDate: (date) => set({ lastConflictMessageDate: date }),
   setLastSuggestedActions: (actions) => set({ lastSuggestedActions: actions }),
   clearLastSuggestedActions: () => set({ lastSuggestedActions: null }),
