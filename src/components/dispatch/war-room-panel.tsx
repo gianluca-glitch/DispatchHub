@@ -43,6 +43,8 @@ export function WarRoomPanel({ job, date }: WarRoomPanelProps) {
   const trucks = trucksData ?? [];
   const addSidebarMessage = useCommandCenterStore((s) => s.addSidebarMessage);
   const triggerDispatchRefetch = useCommandCenterStore((s) => s.triggerDispatchRefetch);
+  const jobAnalysisResultCache = useCommandCenterStore((s) => s.jobAnalysisResultCache);
+  const setJobAnalysisCachedResult = useCommandCenterStore((s) => s.setJobAnalysisCachedResult);
 
   const [panelState, setPanelState] = useState<PanelState>('summary');
   const [analysis, setAnalysis] = useState<JobAnalysisResponse | null>(null);
@@ -83,6 +85,11 @@ export function WarRoomPanel({ job, date }: WarRoomPanelProps) {
   const fetchAnalysis = useCallback(
     (opts?: { action?: 'initial' | 'swap_driver' | 'swap_truck'; newDriverId?: string | null; newTruckId?: string | null }) => {
       if (!job?.id) return;
+      const cacheKey = opts?.action === 'initial' ? job.id : null;
+      if (cacheKey && jobAnalysisResultCache[cacheKey]) {
+        setAnalysis(jobAnalysisResultCache[cacheKey]);
+        return;
+      }
       setAnalysisLoading(true);
       fetch('/api/dispatch/job-analyze', {
         method: 'POST',
@@ -98,12 +105,14 @@ export function WarRoomPanel({ job, date }: WarRoomPanelProps) {
         .then((res) => res.json())
         .then((data) => {
           if (data.error) throw new Error(data.error);
-          setAnalysis(data as JobAnalysisResponse);
+          const result = data as JobAnalysisResponse;
+          setAnalysis(result);
+          if (cacheKey) setJobAnalysisCachedResult(cacheKey, result);
         })
         .catch(() => setAnalysis(null))
         .finally(() => setAnalysisLoading(false));
     },
-    [job?.id, date]
+    [job?.id, date, jobAnalysisResultCache, setJobAnalysisCachedResult]
   );
 
   useEffect(() => {
@@ -115,8 +124,14 @@ export function WarRoomPanel({ job, date }: WarRoomPanelProps) {
       setPreviewImpact(null);
       return;
     }
-    fetchAnalysis();
-  }, [job?.id, date, fetchAnalysis]);
+    const cached = jobAnalysisResultCache[job.id];
+    if (cached) {
+      setAnalysis(cached);
+      return;
+    }
+    const t = setTimeout(() => fetchAnalysis(), 1000);
+    return () => clearTimeout(t);
+  }, [job?.id, jobAnalysisResultCache, fetchAnalysis]);
 
   const addToast = useCallback((text: string) => {
     const id = ++toastIdRef.current;
@@ -311,7 +326,20 @@ export function WarRoomPanel({ job, date }: WarRoomPanelProps) {
                     <SkeletonLine className="w-3/4" />
                   </div>
                 ) : (
-                  <p className="text-sm text-text-1">{analysis?.impactSummary ?? 'No assessment yet.'}</p>
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-sm text-text-1">{analysis?.impactSummary ?? 'No assessment yet.'}</p>
+                    {!analysis && !analysisLoading && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-amber hover:text-amber/90"
+                        onClick={() => fetchAnalysis()}
+                      >
+                        Run AI Analysis
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
               {/* Primary CTA */}

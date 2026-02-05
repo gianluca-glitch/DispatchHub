@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { Message } from '@anthropic-ai/sdk/resources/messages.js';
 
 // Singleton client
 let client: Anthropic | null = null;
@@ -12,14 +13,34 @@ function getClient(): Anthropic {
 
 const MODEL = 'claude-sonnet-4-5-20250929'; // Fast + smart. Swap to opus-4-5 for heavier reasoning.
 
+/** System block with optional prompt-cache control (supported by API; SDK types may lag). */
+type SystemBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } };
+// Request body type for create() when using system blocks with cache_control (API supports it).
+type CreateParams = Parameters<Anthropic['messages']['create']>[0] & { system?: SystemBlock[] };
+
+function logUsage(functionName: string, response: { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }) {
+  const u = response.usage;
+  if (u) {
+    const cacheRead = (u as { cache_read_input_tokens?: number }).cache_read_input_tokens ?? 0;
+    const cacheCreate = (u as { cache_creation_input_tokens?: number }).cache_creation_input_tokens ?? 0;
+    console.log(
+      `[AI] ${functionName}: ${u.input_tokens} in / ${u.output_tokens} out / cache_read: ${cacheRead} / cache_create: ${cacheCreate}`
+    );
+  }
+}
+
 // ─── INTAKE PARSING ────────────────────────────────────────
 // Takes raw phone transcript / email body / form data → structured fields
 
 export async function parseIntakeContent(rawContent: string, source: 'phone' | 'email' | 'form') {
-  const response = await getClient().messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    system: `You are a dispatcher intake parser for a NYC demolition and carting company (EDCC Services Corp).
+  try {
+    const response = (await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system: [
+        {
+          type: 'text',
+          text: `You are a dispatcher intake parser for a NYC demolition and carting company (EDCC Services Corp).
 Parse incoming service requests into structured data. The company handles: pickups, drop-offs, dump-outs, and container swaps.
 NYC boroughs: Manhattan, Brooklyn, Queens, Bronx, Staten Island.
 Container sizes: 10yd, 20yd, 30yd, 40yd.
@@ -45,14 +66,26 @@ Confidence scoring:
 - Below 70 = missing critical fields or very unclear
 
 Be strict about confidence. If the caller is mumbling or unclear, score it low.`,
-    messages: [
-      { role: 'user', content: `Parse this ${source} intake:\n\n${rawContent}` }
-    ],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  return JSON.parse(cleaned);
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [
+        { role: 'user', content: `Parse this ${source} intake:\n\n${rawContent}` }
+      ],
+    } as CreateParams)) as Message;
+    logUsage('parseIntakeContent', response);
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch (error: unknown) {
+    const status = (error as { status?: number; statusCode?: number })?.status ?? (error as { statusCode?: number })?.statusCode;
+    let errorMessage = 'AI temporarily unavailable.';
+    if (status === 401) errorMessage = 'API key invalid — check Settings.';
+    else if (status === 429) errorMessage = 'Rate limit hit — wait 30 seconds.';
+    else if (status === 529) errorMessage = 'Claude API overloaded — retrying...';
+    console.error('[AI] parseIntakeContent error:', status, (error as Error)?.message);
+    throw new Error(errorMessage);
+  }
 }
 
 
@@ -63,10 +96,14 @@ export async function getWorkerRecommendations(
   jobContext: string,
   availableWorkers: { id: string; name: string; role: string; certifications: string[]; currentAssignment: string | null }[]
 ) {
-  const response = await getClient().messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    system: `You are a workforce optimizer for a NYC demolition and carting company.
+  try {
+    const response = (await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system: [
+        {
+          type: 'text',
+          text: `You are a workforce optimizer for a NYC demolition and carting company.
 Given a job description and a list of available workers, recommend the top 3 best matches.
 
 Consider: role match, certifications required, current proximity/assignment, experience.
@@ -78,14 +115,26 @@ Return ONLY valid JSON array:
 ]
 
 Max 3 recommendations. Score honestly — don't inflate.`,
-    messages: [
-      { role: 'user', content: `Job:\n${jobContext}\n\nAvailable workers:\n${JSON.stringify(availableWorkers, null, 2)}` }
-    ],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  return JSON.parse(cleaned);
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [
+        { role: 'user', content: `Job:\n${jobContext}\n\nAvailable workers:\n${JSON.stringify(availableWorkers)}` }
+      ],
+    } as CreateParams)) as Message;
+    logUsage('getWorkerRecommendations', response);
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch (error: unknown) {
+    const status = (error as { status?: number; statusCode?: number })?.status ?? (error as { statusCode?: number })?.statusCode;
+    let errorMessage = 'AI temporarily unavailable.';
+    if (status === 401) errorMessage = 'API key invalid — check Settings.';
+    else if (status === 429) errorMessage = 'Rate limit hit — wait 30 seconds.';
+    else if (status === 529) errorMessage = 'Claude API overloaded — retrying...';
+    console.error('[AI] getWorkerRecommendations error:', status, (error as Error)?.message);
+    throw new Error(errorMessage);
+  }
 }
 
 
@@ -107,7 +156,7 @@ export async function parseVoiceIntent(
   const messages: { role: 'user' | 'assistant'; content: string }[] = [];
 
   if (conversationHistory?.length) {
-    const recent = conversationHistory.slice(-10);
+    const recent = conversationHistory.slice(-4);
     for (const m of recent) {
       if (m.role === 'user' || m.role === 'assistant') {
         messages.push({ role: m.role, content: m.content });
@@ -120,10 +169,14 @@ export async function parseVoiceIntent(
     content: `FULL SCHEDULE FOR TODAY:\n${scheduleContext}\n\nDispatcher said: "${transcript}"`,
   });
 
-  const response = await getClient().messages.create({
-    model: MODEL,
-    max_tokens: 2048,
-    system: `You are an agentic dispatch AI for a NYC carting/demolition company. You EXECUTE commands, not ask questions.
+  try {
+    const response = (await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 2048,
+      system: [
+        {
+          type: 'text',
+          text: `You are an agentic dispatch AI for a NYC carting/demolition company. You EXECUTE commands, not ask questions.
 
 RULES:
 - NEVER ask for clarification. If ambiguous, pick the most logical interpretation and act.
@@ -160,24 +213,45 @@ Action params:
 - swap_driver: { "newDriverId": string, "newDriverName": string }
 
 Use exact IDs from the schedule context. If you only have names, use truckName/driverName and the system will resolve to IDs.`,
-    messages,
-  });
+          cache_control: { type: 'ephemeral' },
+        },
+        {
+          type: 'text',
+          text: `CURRENT SCHEDULE:\n${scheduleContext}`,
+        },
+      ],
+      messages,
+    } as CreateParams)) as Message;
+    logUsage('parseVoiceIntent', response);
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-
-  try {
-    const parsed = JSON.parse(cleaned);
-    return {
-      type: parsed.type ?? 'query',
-      message: parsed.message ?? '',
-      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-      autoApply: !!parsed.autoApply,
-    };
-  } catch {
+    try {
+      const parsed = JSON.parse(cleaned);
+      return {
+        type: parsed.type ?? 'query',
+        message: parsed.message ?? '',
+        actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+        autoApply: !!parsed.autoApply,
+      };
+    } catch {
+      return {
+        type: 'query',
+        message: cleaned || 'Could not parse response.',
+        actions: [],
+        autoApply: false,
+      };
+    }
+  } catch (error: unknown) {
+    const status = (error as { status?: number; statusCode?: number })?.status ?? (error as { statusCode?: number })?.statusCode;
+    let errorMessage = 'AI temporarily unavailable.';
+    if (status === 401) errorMessage = 'API key invalid — check Settings.';
+    else if (status === 429) errorMessage = 'Rate limit hit — wait 30 seconds.';
+    else if (status === 529) errorMessage = 'Claude API overloaded — retrying...';
+    console.error('[AI] parseVoiceIntent error:', status, (error as Error)?.message);
     return {
       type: 'query',
-      message: cleaned || 'Could not parse response.',
+      message: errorMessage,
       actions: [],
       autoApply: false,
     };
@@ -194,25 +268,24 @@ export async function projectBrainChat(
   chatHistory: { role: 'user' | 'assistant'; content: string }[],
   userMessage: string
 ) {
+  const trimmedHistory = chatHistory.slice(-6);
   const messages = [
-    ...chatHistory.map(m => ({
+    ...trimmedHistory.map(m => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     })),
     { role: 'user' as const, content: userMessage },
   ];
 
-  const response = await getClient().messages.create({
-    model: MODEL,
-    max_tokens: 2048,
-    system: `You are the "Project Brain" — an AI assistant embedded in a specific demolition project.
+  try {
+    const response = (await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 2048,
+      system: [
+        {
+          type: 'text',
+          text: `You are the "Project Brain" — an AI assistant embedded in a specific demolition project.
 You have full context on this project AND the entire company's schedule.
-
-PROJECT CONTEXT:
-${projectContext}
-
-GLOBAL SCHEDULE (today + upcoming):
-${globalScheduleContext}
 
 RULES:
 - Always check global schedule for conflicts before recommending changes
@@ -221,10 +294,26 @@ RULES:
 - Reference previous chat messages when relevant
 - Be concise but thorough. This is a busy dispatcher.
 - Use concrete data: names, dates, truck numbers. No vague answers.`,
-    messages,
-  });
-
-  return response.content[0].type === 'text' ? response.content[0].text : '';
+          cache_control: { type: 'ephemeral' },
+        },
+        {
+          type: 'text',
+          text: `PROJECT CONTEXT:\n${projectContext}\n\nGLOBAL SCHEDULE (today + upcoming):\n${globalScheduleContext}`,
+        },
+      ],
+      messages,
+    } as CreateParams)) as Message;
+    logUsage('projectBrainChat', response);
+    return response.content[0].type === 'text' ? response.content[0].text : '';
+  } catch (error: unknown) {
+    const status = (error as { status?: number; statusCode?: number })?.status ?? (error as { statusCode?: number })?.statusCode;
+    let errorMessage = 'AI temporarily unavailable.';
+    if (status === 401) errorMessage = 'API key invalid — check Settings.';
+    else if (status === 429) errorMessage = 'Rate limit hit — wait 30 seconds.';
+    else if (status === 529) errorMessage = 'Claude API overloaded — retrying...';
+    console.error('[AI] projectBrainChat error:', status, (error as Error)?.message);
+    return errorMessage;
+  }
 }
 
 
@@ -236,22 +325,24 @@ export async function dispatchAiChat(
   chatHistory: { role: 'user' | 'assistant'; content: string }[],
   userMessage: string
 ) {
+  const trimmedHistory = chatHistory.slice(-6);
   const messages = [
-    ...chatHistory.map(m => ({
+    ...trimmedHistory.map(m => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     })),
     { role: 'user' as const, content: userMessage },
   ];
 
-  const response = await getClient().messages.create({
-    model: MODEL,
-    max_tokens: 2048,
-    system: `You are the DispatchHub AI assistant for EDCC Services Corp, a NYC demolition and carting company.
+  try {
+    const response = (await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 2048,
+      system: [
+        {
+          type: 'text',
+          text: `You are the DispatchHub AI assistant for EDCC Services Corp, a NYC demolition and carting company.
 You have access to today's full dispatch schedule.
-
-CURRENT SCHEDULE:
-${scheduleContext}
 
 You can help with:
 - Schedule overview and status
@@ -262,10 +353,26 @@ You can help with:
 - Answering questions about any job, worker, or truck
 
 Be direct and practical. Dispatchers are busy — no fluff. Use names and numbers.`,
-    messages,
-  });
-
-  return response.content[0].type === 'text' ? response.content[0].text : '';
+          cache_control: { type: 'ephemeral' },
+        },
+        {
+          type: 'text',
+          text: `CURRENT SCHEDULE:\n${scheduleContext}`,
+        },
+      ],
+      messages,
+    } as CreateParams)) as Message;
+    logUsage('dispatchAiChat', response);
+    return response.content[0].type === 'text' ? response.content[0].text : '';
+  } catch (error: unknown) {
+    const status = (error as { status?: number; statusCode?: number })?.status ?? (error as { statusCode?: number })?.statusCode;
+    let errorMessage = 'AI temporarily unavailable.';
+    if (status === 401) errorMessage = 'API key invalid — check Settings.';
+    else if (status === 429) errorMessage = 'Rate limit hit — wait 30 seconds.';
+    else if (status === 529) errorMessage = 'Claude API overloaded — retrying...';
+    console.error('[AI] dispatchAiChat error:', status, (error as Error)?.message);
+    return errorMessage;
+  }
 }
 
 // ─── PREVIEW ASSIGNMENT ANALYSIS ───────────────────────────
@@ -341,18 +448,34 @@ export async function analyzePreviewAssignment(input: PreviewAnalysisInput) {
   "routeImpact": string
 }`;
 
-  const userContent = `Schema to return:\n${schema}\n\nInput data:\n${JSON.stringify(input, null, 2)}`;
+  const userContent = `Schema to return:\n${schema}\n\nInput data:\n${JSON.stringify(input)}`;
 
-  const response = await getClient().messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    system: `${system}\n\nReturn only valid JSON. Set "conflicts" to [].`,
-    messages: [{ role: 'user', content: userContent }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  return JSON.parse(cleaned) as import('@/types').PreviewAnalysis;
+  try {
+    const response = (await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system: [
+        {
+          type: 'text',
+          text: `${system}\n\nReturn only valid JSON. Set "conflicts" to [].`,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [{ role: 'user', content: userContent }],
+    } as CreateParams)) as Message;
+    logUsage('analyzePreviewAssignment', response);
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(cleaned) as import('@/types').PreviewAnalysis;
+  } catch (error: unknown) {
+    const status = (error as { status?: number; statusCode?: number })?.status ?? (error as { statusCode?: number })?.statusCode;
+    let errorMessage = 'AI temporarily unavailable.';
+    if (status === 401) errorMessage = 'API key invalid — check Settings.';
+    else if (status === 429) errorMessage = 'Rate limit hit — wait 30 seconds.';
+    else if (status === 529) errorMessage = 'Claude API overloaded — retrying...';
+    console.error('[AI] analyzePreviewAssignment error:', status, (error as Error)?.message);
+    throw new Error(errorMessage);
+  }
 }
 
 // ─── DISPATCH COMMAND CENTER: SCENARIO ANALYSIS ─────────────
@@ -425,25 +548,49 @@ Respond ONLY with valid JSON matching this exact schema:
 
 No markdown, no explanation, no code fences. JSON only.`;
 
-  const response = await getClient().messages.create({
-    model: MODEL,
-    max_tokens: 2048,
-    system,
-    messages: [{ role: 'user', content: `Analyze this scenario:\n\n${JSON.stringify(input, null, 2)}` }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   try {
-    return JSON.parse(cleaned) as import('@/types').ScenarioResult;
-  } catch {
+    const response = (await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 2048,
+      system: [
+        {
+          type: 'text',
+          text: system,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [{ role: 'user', content: `Analyze this scenario:\n\n${JSON.stringify(input)}` }],
+    } as CreateParams)) as Message;
+    logUsage('analyzeScenario', response);
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    try {
+      return JSON.parse(cleaned) as import('@/types').ScenarioResult;
+    } catch {
+      return {
+        feasible: false,
+        score: 0,
+        affectedRoutes: [],
+        unassignedJobs: [],
+        warnings: [],
+        recommendation: cleaned || 'Scenario analysis failed to parse.',
+        alternativeScenarios: [],
+      };
+    }
+  } catch (error: unknown) {
+    const status = (error as { status?: number; statusCode?: number })?.status ?? (error as { statusCode?: number })?.statusCode;
+    let errorMessage = 'AI temporarily unavailable.';
+    if (status === 401) errorMessage = 'API key invalid — check Settings.';
+    else if (status === 429) errorMessage = 'Rate limit hit — wait 30 seconds.';
+    else if (status === 529) errorMessage = 'Claude API overloaded — retrying...';
+    console.error('[AI] analyzeScenario error:', status, (error as Error)?.message);
     return {
       feasible: false,
       score: 0,
       affectedRoutes: [],
       unassignedJobs: [],
       warnings: [],
-      recommendation: cleaned || 'Scenario analysis failed to parse.',
+      recommendation: errorMessage,
       alternativeScenarios: [],
     };
   }
@@ -477,19 +624,35 @@ export async function getQuickRecommendation(input: QuickRecommendationInput): P
 Respond ONLY with JSON: { "score": number, "oneliner": string (under 20 words), "proceed": boolean }
 No markdown, no explanation. JSON only.`;
 
-  const response = await getClient().messages.create({
-    model: MODEL,
-    max_tokens: 256,
-    system,
-    messages: [{ role: 'user', content: JSON.stringify(input, null, 2) }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   try {
-    return JSON.parse(cleaned) as QuickRecommendationResult;
-  } catch {
-    return { score: 0, oneliner: 'Unable to rate assignment.', proceed: false };
+    const response = (await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 256,
+      system: [
+        {
+          type: 'text',
+          text: system,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [{ role: 'user', content: JSON.stringify(input) }],
+    } as CreateParams)) as Message;
+    logUsage('getQuickRecommendation', response);
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    try {
+      return JSON.parse(cleaned) as QuickRecommendationResult;
+    } catch {
+      return { score: 0, oneliner: 'Unable to rate assignment.', proceed: false };
+    }
+  } catch (error: unknown) {
+    const status = (error as { status?: number; statusCode?: number })?.status ?? (error as { statusCode?: number })?.statusCode;
+    let errorMessage = 'AI temporarily unavailable.';
+    if (status === 401) errorMessage = 'API key invalid — check Settings.';
+    else if (status === 429) errorMessage = 'Rate limit hit — wait 30 seconds.';
+    else if (status === 529) errorMessage = 'Claude API overloaded — retrying...';
+    console.error('[AI] getQuickRecommendation error:', status, (error as Error)?.message);
+    return { score: 0, oneliner: errorMessage, proceed: false };
   }
 }
 
@@ -569,32 +732,55 @@ Return ONLY valid JSON with this exact schema:
 
 No markdown, no code fences. JSON only.`;
 
-  const response = await getClient().messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    system,
-    messages: [{ role: 'user', content: `Analyze this job:\n\n${JSON.stringify(input, null, 2)}` }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   try {
-    const parsed = JSON.parse(cleaned);
-    return {
-      conflicts: Array.isArray(parsed.conflicts) ? parsed.conflicts : [],
-      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
-      warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
-      impactSummary: typeof parsed.impactSummary === 'string' ? parsed.impactSummary : '',
-      workerRecs: Array.isArray(parsed.workerRecs) ? parsed.workerRecs : [],
-      truckRecs: Array.isArray(parsed.truckRecs) ? parsed.truckRecs : [],
-      optimizationTip: typeof parsed.optimizationTip === 'string' ? parsed.optimizationTip : undefined,
-    };
-  } catch {
+    const response = (await getClient().messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system: [
+        {
+          type: 'text',
+          text: system,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [{ role: 'user', content: `Analyze this job:\n\n${JSON.stringify(input)}` }],
+    } as CreateParams)) as Message;
+    logUsage('analyzeJob', response);
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    try {
+      const parsed = JSON.parse(cleaned);
+      return {
+        conflicts: Array.isArray(parsed.conflicts) ? parsed.conflicts : [],
+        recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [],
+        warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+        impactSummary: typeof parsed.impactSummary === 'string' ? parsed.impactSummary : '',
+        workerRecs: Array.isArray(parsed.workerRecs) ? parsed.workerRecs : [],
+        truckRecs: Array.isArray(parsed.truckRecs) ? parsed.truckRecs : [],
+        optimizationTip: typeof parsed.optimizationTip === 'string' ? parsed.optimizationTip : undefined,
+      };
+    } catch {
+      return {
+        conflicts: [],
+        recommendations: [],
+        warnings: [],
+        impactSummary: cleaned.slice(0, 80) || 'Analysis unavailable.',
+        workerRecs: [],
+        truckRecs: [],
+      };
+    }
+  } catch (error: unknown) {
+    const status = (error as { status?: number; statusCode?: number })?.status ?? (error as { statusCode?: number })?.statusCode;
+    let errorMessage = 'AI temporarily unavailable.';
+    if (status === 401) errorMessage = 'API key invalid — check Settings.';
+    else if (status === 429) errorMessage = 'Rate limit hit — wait 30 seconds.';
+    else if (status === 529) errorMessage = 'Claude API overloaded — retrying...';
+    console.error('[AI] analyzeJob error:', status, (error as Error)?.message);
     return {
       conflicts: [],
       recommendations: [],
       warnings: [],
-      impactSummary: cleaned.slice(0, 80) || 'Analysis unavailable.',
+      impactSummary: errorMessage,
       workerRecs: [],
       truckRecs: [],
     };

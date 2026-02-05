@@ -167,7 +167,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
   }, [selectedDate, conflicts, conflictsLoading, addSidebarMessage, lastConflictMessageDate, setLastConflictMessageDate]);
 
   const buildConversationHistory = (): { role: string; content: string }[] => {
-    return sidebarMessages.slice(-10).map((m) => ({
+    return sidebarMessages.slice(-6).map((m) => ({
       role: m.role,
       content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
     }));

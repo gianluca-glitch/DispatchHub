@@ -188,11 +188,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(response);
   } catch (e) {
-    console.error('job-analyze', e);
+    const message = e instanceof Error ? e.message : 'Analysis failed';
+    console.error('[job-analyze]', message, e);
     return NextResponse.json(
       {
-        error: 'Analysis failed',
-        impactSummary: 'Analysis failed.',
+        error: message,
+        impactSummary: message,
         conflicts: [],
         warnings: [],
         topWorker: null,

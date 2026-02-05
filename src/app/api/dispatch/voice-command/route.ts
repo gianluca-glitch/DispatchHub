@@ -42,23 +42,37 @@ export async function POST(req: NextRequest) {
     db.worker.findMany(),
   ]);
 
-  // Full schedule context for AI — include job IDs so AI can reference them
-  const scheduleContextParts = [
-    'Jobs today (use exact id for jobId in actions):',
-    ...jobs.map(
-      (j) =>
-        `- id=${j.id} | ${j.customer} @ ${j.address} (${j.borough}) ${j.time} | Truck: ${j.truck?.name ?? 'unassigned'} (${j.truckId ?? 'null'}) | Driver: ${j.driver?.name ?? 'unassigned'} (${j.driverId ?? 'null'}) | Status: ${j.status}`
-    ),
-    'Trucks: ' + trucks.map((t) => `${t.name} (id=${t.id})`).join(', '),
-    'Workers: ' + workers.map((w) => `${w.name} (id=${w.id})`).join(', '),
-  ];
-  if (jobContext && (jobContext.id || jobContext.customer)) {
-    scheduleContextParts.unshift(
-      'FOCUS JOB: ' +
-        `id=${jobContext.id ?? '?'} | customer=${jobContext.customer ?? '?'} | address=${jobContext.address ?? '?'} | truck=${jobContext.truckName ?? jobContext.truckId ?? '?'} | driver=${jobContext.driverName ?? jobContext.driverId ?? '?'}.`
-    );
-  }
-  const scheduleContext = scheduleContextParts.join('\n');
+  // Compact pipe-delimited schedule for AI (jobId, time, customer 30chars, borough, truck, driver, status only)
+  const header = 'ID|Time|Customer|Borough|Truck|Driver|Status';
+  const jobLines = jobs.map((j) =>
+    [
+      j.id,
+      j.time,
+      (j.customer ?? '').slice(0, 30),
+      j.borough,
+      j.truck?.name ?? '—',
+      j.driver?.name ?? '—',
+      j.status,
+    ].join('|')
+  );
+  const scheduleContext =
+    header +
+    '\n' +
+    jobLines.join('\n') +
+    '\nTrucks: ' +
+    trucks.map((t) => `${t.name} (id=${t.id})`).join(', ') +
+    '\nWorkers: ' +
+    workers.map((w) => `${w.name} (id=${w.id})`).join(', ') +
+    (jobContext && (jobContext.id || jobContext.customer)
+      ? '\nFOCUS JOB: id=' +
+        (jobContext.id ?? '?') +
+        ' customer=' +
+        (jobContext.customer ?? '?').slice(0, 30) +
+        ' truck=' +
+        (jobContext.truckName ?? jobContext.truckId ?? '?') +
+        ' driver=' +
+        (jobContext.driverName ?? jobContext.driverId ?? '?')
+      : '');
 
   let parsed: {
     type: 'update' | 'scenario' | 'query';
@@ -69,10 +83,12 @@ export async function POST(req: NextRequest) {
   try {
     parsed = await parseVoiceIntent(text, scheduleContext, conversationHistory);
   } catch (e) {
-    return NextResponse.json(
-      { error: 'Failed to parse intent' },
-      { status: 500 }
-    );
+    const message = e instanceof Error ? e.message : 'Failed to parse intent';
+    const status =
+      message.includes('API key') ? 401 :
+      message.includes('Rate limit') ? 429 :
+      message.includes('overloaded') || message.includes('unavailable') ? 503 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 
   const resolveTruckId = (idOrName: string | undefined): string | null => {

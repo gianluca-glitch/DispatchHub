@@ -3,7 +3,7 @@
 // Server data lives in React Query / SWR — this is for UI-only state
 
 import { create } from 'zustand';
-import type { PreviewAssignment, ScenarioInput, ScenarioResult, JobAnalysis, JobAnalysisFeedEntry, VoiceCommandActionItem } from '@/types';
+import type { PreviewAssignment, ScenarioInput, ScenarioResult, JobAnalysis, JobAnalysisFeedEntry, JobAnalysisResponse, VoiceCommandActionItem } from '@/types';
 
 export type SidebarMessage = {
   role: 'user' | 'assistant';
@@ -178,6 +178,10 @@ interface CommandCenterStore {
   addToJobAnalysisFeed: (entry: JobAnalysisFeedEntry) => void;
   clearJobAnalysis: () => void;
 
+  /** Cache of job-analyze API results by jobId to avoid re-firing on re-open. */
+  jobAnalysisResultCache: Record<string, JobAnalysisResponse>;
+  setJobAnalysisCachedResult: (jobId: string, result: JobAnalysisResponse) => void;
+
   modifiedFields: Record<string, any>;
   setModifiedField: (field: string, value: any) => void;
   clearModifiedFields: () => void;
@@ -205,6 +209,8 @@ const defaultCommandCenter = {
   jobAnalysis: null as JobAnalysis | null,
   jobAnalysisLoading: false,
   jobAnalysisFeed: [] as JobAnalysisFeedEntry[],
+
+  jobAnalysisResultCache: {} as Record<string, JobAnalysisResponse>,
 
   modifiedFields: {} as Record<string, any>,
 };
@@ -271,6 +277,11 @@ export const useCommandCenterStore = create<CommandCenterStore>((set, get) => ({
     set((state) => ({ jobAnalysisFeed: [...state.jobAnalysisFeed, entry] })),
   clearJobAnalysis: () =>
     set({ jobAnalysis: null, jobAnalysisFeed: [], jobAnalysisLoading: false }),
+
+  setJobAnalysisCachedResult: (jobId, result) =>
+    set((state) => ({
+      jobAnalysisResultCache: { ...state.jobAnalysisResultCache, [jobId]: result },
+    })),
 
   setModifiedField: (field, value) =>
     set((state) => ({

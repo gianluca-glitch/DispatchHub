@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Phone,
   Mail,
@@ -170,13 +170,7 @@ export function IntakeCard({
     }
   }, [item.id, setPreview, getOtherPreviews]);
 
-  useEffect(() => {
-    if (!expanded) return;
-    const p = usePreviewStore.getState().previews[item.id];
-    if (p?.truckId && p?.driverId && !p.analysisLoading && !p.analysis) {
-      triggerAnalyze();
-    }
-  }, [expanded, item.id, triggerAnalyze]);
+  const analyzeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlePreviewChange = useCallback(
     (updates: Partial<{ truckId: string | null; driverId: string | null; workerIds: string[]; timeOverride: string | null; containerSize: string | null }>) => {
@@ -193,7 +187,11 @@ export function IntakeCard({
       const next = { ...current, ...updates };
       setPreview(item.id, next);
       if (next.truckId && next.driverId && (updates.truckId !== undefined || updates.driverId !== undefined || updates.workerIds !== undefined || updates.timeOverride !== undefined)) {
-        setTimeout(() => triggerAnalyze(), 0);
+        if (analyzeDebounceRef.current) clearTimeout(analyzeDebounceRef.current);
+        analyzeDebounceRef.current = setTimeout(() => {
+          analyzeDebounceRef.current = null;
+          triggerAnalyze();
+        }, 2000);
       }
     },
     [item.id, setPreview, triggerAnalyze]
@@ -661,7 +659,18 @@ export function IntakeCard({
                     </div>
                   )}
                 </>
-              ) : null}
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-amber text-black hover:bg-amber/90"
+                  onClick={() => triggerAnalyze()}
+                  disabled={preview.analysisLoading}
+                >
+                  {preview.analysisLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                  <span className="ml-1.5">Analyze</span>
+                </Button>
+              )}
             </div>
           )}
 
