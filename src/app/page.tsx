@@ -42,7 +42,7 @@ export default function Home() {
   }, [showSearch, setShowSearch]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col bg-background min-h-screen">
       {/* ── VOICE RECORDING BANNER ── */}
       {micActive && (
         <div className="bg-danger/20 border-b border-danger/40 px-4 py-2 flex items-center justify-center gap-2 text-danger text-sm font-medium animate-pulse">
@@ -137,15 +137,17 @@ export default function Home() {
       </header>
 
       {/* ── CONTENT AREA ── */}
-      <main className="flex-1 p-4">
-        {/* TODO: Replace with actual tab components as you build them */}
-        {activeTab === 'dispatch' && <DispatchTab />}
-        {activeTab === 'planner' && <PlaceholderTab name="Planner" description="Monthly calendar with capacity dots and conflict flags" />}
-        {activeTab === 'intake' && <IntakeTab />}
-        {activeTab === 'projects' && <PlaceholderTab name="Projects" description="Demo project cards with crew assignments and Project Brain AI" />}
-        {activeTab === 'fleet' && <PlaceholderTab name="Fleet" description="18 vehicles grid with GPS status from IntelliShift" />}
-        {activeTab === 'crew' && <PlaceholderTab name="Crew" description="16 workers with roles, certs, and availability" />}
-        {activeTab === 'settings' && <PlaceholderTab name="Settings" description="Integration panels: IntelliShift, Twilio, Outlook, RALCO" />}
+      <main className="flex-1 min-h-0 flex flex-col p-4">
+        <div className="h-full flex-1 min-h-0 flex flex-col">
+          {/* TODO: Replace with actual tab components as you build them */}
+          {activeTab === 'dispatch' && <DispatchTab />}
+          {activeTab === 'planner' && <PlaceholderTab name="Planner" description="Monthly calendar with capacity dots and conflict flags" />}
+          {activeTab === 'intake' && <IntakeTab />}
+          {activeTab === 'projects' && <PlaceholderTab name="Projects" description="Demo project cards with crew assignments and Project Brain AI" />}
+          {activeTab === 'fleet' && <PlaceholderTab name="Fleet" description="18 vehicles grid with GPS status from IntelliShift" />}
+          {activeTab === 'crew' && <PlaceholderTab name="Crew" description="16 workers with roles, certs, and availability" />}
+          {activeTab === 'settings' && <PlaceholderTab name="Settings" description="Integration panels: IntelliShift, Twilio, Outlook, RALCO" />}
+        </div>
       </main>
 
       {/* TODO: Global Search modal (showSearch) */}

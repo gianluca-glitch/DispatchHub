@@ -124,7 +124,7 @@ export function RouteOverviewPanel({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 flex flex-col overflow-y-auto gap-1 p-2">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-text-3 text-sm">Loading routes…</div>
         ) : routes.length === 0 && (unassigned?.length ?? 0) === 0 ? (
@@ -141,12 +141,16 @@ export function RouteOverviewPanel({
               const completed = getCompleted(route);
               const pct = route.stops.length > 0 ? Math.round((completed / route.stops.length) * 100) : 0;
               const displayPct = Math.min(100, pct);
+              const canGrow = !expandedId && routes.length <= 5;
+              const stayCompact = expandedId !== null || routes.length > 5;
 
               return (
                 <div
                   key={route.truckId}
                   className={cn(
-                    'border-b border-border bg-surface-1 transition-colors',
+                    'min-h-[60px] border-b border-border bg-surface-1 transition-colors',
+                    canGrow && 'flex-1',
+                    stayCompact && 'flex-shrink-0',
                     isExpanded && 'bg-surface-2'
                   )}
                   style={{ borderLeftWidth: 4, borderLeftColor: color }}

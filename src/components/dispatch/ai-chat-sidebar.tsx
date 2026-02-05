@@ -329,28 +329,31 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
   }
 
   return (
-    <div className="w-[30%] min-w-[280px] max-w-[420px] shrink-0 flex flex-col border-l border-border bg-surface-0">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-        <h3 className="text-sm font-semibold text-text-0">Dispatch AI</h3>
+    <div className="h-full w-full min-w-0 flex flex-col overflow-hidden border-l border-border bg-surface-0">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
+        <h3 className="text-sm font-semibold text-text-0 truncate min-w-0">Dispatch AI</h3>
         <button
           type="button"
           onClick={() => setSidebarOpen(false)}
-          className="p-1.5 rounded text-text-3 hover:text-amber hover:bg-surface-2 transition-colors"
+          className="p-1.5 rounded text-text-3 hover:text-amber hover:bg-surface-2 transition-colors flex-shrink-0"
           aria-label="Minimize sidebar"
         >
           <PanelRightClose className="h-4 w-4" />
         </button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 space-y-3 flex flex-col justify-start"
+      >
         {sidebarMessages.length === 0 && !loading && (
-          <p className="text-text-3 text-sm py-4">Ask about today’s schedule, mark jobs complete, or run a scenario.</p>
+          <p className="text-text-3 text-sm py-4 break-words">Ask about today’s schedule, mark jobs complete, or run a scenario.</p>
         )}
         {sidebarMessages.map((msg, i) => {
           if (msg.role === 'user') {
             return (
-              <div key={i} className="flex justify-end">
-                <div className="max-w-[85%] px-3 py-2 rounded-lg rounded-tr-sm bg-amber/20 text-amber border border-amber/30 text-sm">
+              <div key={i} className="flex justify-end min-w-0">
+                <div className="max-w-[85%] min-w-0 px-3 py-2 rounded-lg rounded-tr-sm bg-amber/20 text-amber border border-amber/30 text-sm break-words">
                   {msg.content}
                 </div>
               </div>
@@ -365,9 +368,9 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
               appliedCount: number;
             };
             return (
-              <div key={i} className="flex justify-start">
-                <div className="max-w-[95%] w-full space-y-2">
-                  <div className="px-3 py-2 rounded-lg rounded-tl-sm bg-surface-2 text-text-1 border border-border text-sm">
+              <div key={i} className="flex justify-start min-w-0">
+                <div className="max-w-[95%] w-full min-w-0 space-y-2">
+                  <div className="px-3 py-2 rounded-lg rounded-tl-sm bg-surface-2 text-text-1 border border-border text-sm break-words">
                     {message}
                   </div>
                   {actions?.length > 0 && (
@@ -389,7 +392,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
                             ) : (
                               <Icon className="h-4 w-4 shrink-0 text-amber" />
                             )}
-                            <span>{getActionLabel(act)}</span>
+                            <span className="break-words">{getActionLabel(act)}</span>
                           </div>
                         );
                       })}
@@ -427,8 +430,8 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
           if (msg.type === 'scenario' && msg.data) {
             const result = msg.data as ScenarioResult;
             return (
-              <div key={i} className="flex justify-start">
-                <div className="max-w-[95%] w-full">
+              <div key={i} className="flex justify-start min-w-0">
+                <div className="max-w-[95%] w-full min-w-0">
                   <ScenarioCardInline
                     result={result}
                     onApply={() => handleApplyScenario(result)}
@@ -441,16 +444,16 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
           }
           if (msg.type === 'update') {
             return (
-              <div key={i} className="flex justify-start">
-                <div className="max-w-[85%] px-3 py-2 rounded-lg rounded-tl-sm bg-success/20 text-success border border-success/30 text-sm">
+              <div key={i} className="flex justify-start min-w-0">
+                <div className="max-w-[85%] min-w-0 px-3 py-2 rounded-lg rounded-tl-sm bg-success/20 text-success border border-success/30 text-sm break-words">
                   {msg.content}
                 </div>
               </div>
             );
           }
           return (
-            <div key={i} className="flex justify-start">
-              <div className="max-w-[85%] px-3 py-2 rounded-lg rounded-tl-sm bg-surface-2 text-text-1 border border-border text-sm">
+            <div key={i} className="flex justify-start min-w-0">
+              <div className="max-w-[85%] min-w-0 px-3 py-2 rounded-lg rounded-tl-sm bg-surface-2 text-text-1 border border-border text-sm break-words">
                 {msg.content}
               </div>
             </div>
@@ -463,7 +466,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
         )}
       </div>
 
-      <div className="p-2 border-t border-border shrink-0 flex gap-2">
+      <div className="p-2 border-t border-border flex-shrink-0 flex gap-2 min-w-0">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}

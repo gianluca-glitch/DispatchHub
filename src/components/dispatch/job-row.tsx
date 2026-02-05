@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 
 export interface JobRowProps {
   job: CartingJob;
+  className?: string;
   onClick: () => void;
   onDoubleClick?: () => void;
   highlighted?: boolean;
@@ -51,7 +52,16 @@ const PRIORITY_BADGE: Record<Priority, string> = {
   URGENT: 'bg-danger/15 text-danger border-danger/40',
 };
 
-export function JobRow({ job, onClick, onDoubleClick, highlighted, highlightBorderColor }: JobRowProps) {
+const ROW_GRID = 'grid grid-cols-[10%_18%_22%_12%_12%_12%_8%_6%] gap-0 min-w-0';
+
+export function JobRow({
+  job,
+  className,
+  onClick,
+  onDoubleClick,
+  highlighted,
+  highlightBorderColor,
+}: JobRowProps) {
   const time = job.time || '—';
   const customer = job.customer || '—';
   const address = job.address || '—';
@@ -59,7 +69,8 @@ export function JobRow({ job, onClick, onDoubleClick, highlighted, highlightBord
   const driverName = job.driver?.name ?? '—';
 
   return (
-    <tr
+    <div
+      role="row"
       data-job-id={job.id}
       tabIndex={0}
       onClick={onClick}
@@ -71,52 +82,64 @@ export function JobRow({ job, onClick, onDoubleClick, highlighted, highlightBord
         }
       }}
       className={cn(
-        'border-b border-border hover:bg-surface-1 cursor-pointer transition-colors',
+        ROW_GRID,
+        'items-center border-b border-border hover:bg-surface-1 cursor-pointer transition-colors',
+        'text-[12px] py-1.5',
         highlighted && 'bg-amber/10 ring-inset ring-1 ring-amber/30',
-        highlightBorderColor && 'border-l-4'
+        highlightBorderColor && 'border-l-4',
+        className
       )}
       style={highlightBorderColor ? { borderLeftColor: highlightBorderColor } : undefined}
     >
-      <td className="py-2.5 pl-4 pr-2 font-mono text-sm text-text-1 whitespace-nowrap">
+      <div
+        className="pl-4 pr-2 text-[11px] tabular-nums font-mono text-text-1 whitespace-nowrap overflow-hidden text-ellipsis min-w-0"
+        title={time}
+      >
         {time}
-      </td>
-      <td className="py-2.5 px-2 text-sm text-text-0">{customer}</td>
-      <td className="py-2.5 px-2 text-sm text-text-2 max-w-[200px] truncate" title={address}>
+      </div>
+      <div className="px-2 text-[12px] text-text-0 truncate min-w-0" title={customer}>
+        {customer}
+      </div>
+      <div className="px-2 text-[12px] text-text-2 truncate min-w-0" title={address}>
         {address}
-      </td>
-      <td className="py-2.5 px-2">
+      </div>
+      <div className="px-2 overflow-hidden min-w-0 flex items-center">
         <span
           className={cn(
-            'inline-flex rounded border px-2 py-0.5 text-xs font-medium',
+            'inline-flex rounded border text-[10px] px-1.5 py-0.5 font-medium',
             JOB_TYPE_PILL[job.type as JobType]
           )}
         >
           {JOB_TYPE_LABELS[job.type as JobType]}
         </span>
-      </td>
-      <td className="py-2.5 px-2 text-sm text-text-1">{truckName}</td>
-      <td className="py-2.5 px-2 text-sm text-text-1">{driverName}</td>
-      <td className="py-2.5 px-2">
+      </div>
+      <div className="px-2 text-[12px] text-text-1 truncate min-w-0" title={truckName}>
+        {truckName}
+      </div>
+      <div className="px-2 text-[12px] text-text-1 truncate min-w-0" title={driverName}>
+        {driverName}
+      </div>
+      <div className="px-2 overflow-hidden min-w-0 flex items-center">
         <span
           className={cn(
-            'inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium',
+            'inline-flex items-center gap-1 rounded text-[10px] px-1.5 py-0.5 font-medium',
             JOB_STATUS_PILL[job.status as JobStatus]
           )}
         >
           <span
-            className={cn('h-1.5 w-1.5 rounded-full shrink-0', STATUS_DOT[job.status as JobStatus])}
+            className={cn('h-1 w-1 rounded-full shrink-0', STATUS_DOT[job.status as JobStatus])}
           />
           {JOB_STATUS_LABELS[job.status as JobStatus]}
         </span>
-      </td>
-      <td className="py-2.5 px-2">
+      </div>
+      <div className="px-2 overflow-hidden min-w-0 flex items-center">
         <Badge
           variant="outline"
-          className={cn('text-xs font-medium', PRIORITY_BADGE[job.priority as Priority])}
+          className={cn('text-[10px] px-1.5 py-0.5 font-medium', PRIORITY_BADGE[job.priority as Priority])}
         >
           {PRIORITY_LABELS[job.priority as Priority]}
         </Badge>
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }
