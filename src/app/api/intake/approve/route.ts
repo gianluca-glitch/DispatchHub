@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { sendConfirmations } from '@/lib/confirmation';
 import type { Borough, JobType } from '@prisma/client';
 
-const VALID_JOB_TYPES: JobType[] = ['PICKUP', 'DROP_OFF', 'DUMP_OUT', 'SWAP'];
+const VALID_JOB_TYPES: JobType[] = ['PICKUP', 'DROP_OFF', 'DUMP_OUT'];
 const DEFAULT_BOROUGH: Borough = 'MANHATTAN';
 
 // POST /api/intake/approve — create CartingJob from intake, fire confirmations, mark intake APPROVED

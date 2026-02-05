@@ -11,7 +11,7 @@ import {
 import { JOB_TYPE_LABELS, type JobType } from '@/types';
 import { cn } from '@/lib/utils';
 
-const JOB_TYPES: JobType[] = ['PICKUP', 'DROP_OFF', 'DUMP_OUT', 'SWAP'];
+const JOB_TYPES: JobType[] = ['PICKUP', 'DROP_OFF', 'DUMP_OUT'];
 
 export interface ParsedFieldsProps {
   item: {

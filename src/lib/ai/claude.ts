@@ -50,7 +50,7 @@ Return ONLY valid JSON with this exact shape:
   "customer": string | null,
   "phone": string | null,
   "email": string | null,
-  "serviceType": "PICKUP" | "DROP_OFF" | "DUMP_OUT" | "SWAP" | null,
+  "serviceType": "PICKUP" | "DROP_OFF" | "DUMP_OUT" | null,
   "address": string | null,
   "borough": "MANHATTAN" | "BROOKLYN" | "QUEENS" | "BRONX" | "STATEN_ISLAND" | null,
   "date": "YYYY-MM-DD" | null,
@@ -213,7 +213,7 @@ Action params:
 - reschedule: { "newDate": "YYYY-MM-DD", "newTime": "HH:MM" (optional) }
 - swap_truck: { "newTruckId": string, "newTruckName": string }
 - swap_driver: { "newDriverId": string, "newDriverName": string }
-- create_job: { "customer": string, "address": string, "borough": "MANHATTAN"|"BROOKLYN"|"QUEENS"|"BRONX"|"STATEN_ISLAND", "time": "HH:MM" (24h format), "type": "PICKUP"|"DROP_OFF"|"DUMP_OUT"|"SWAP"|"HAUL", "containerSize": string (optional), "truckId": string (optional), "truckName": string (optional), "driverId": string (optional), "driverName": string (optional), "notes": string (optional) }
+- create_job: { "customer": string, "address": string, "borough": "MANHATTAN"|"BROOKLYN"|"QUEENS"|"BRONX"|"STATEN_ISLAND", "time": "HH:MM" (24h format), "type": "PICKUP"|"DROP_OFF"|"DUMP_OUT", "containerSize": string (optional), "truckId": string (optional), "truckName": string (optional), "driverId": string (optional), "driverName": string (optional), "notes": string (optional) }
   NOTE: Jobs are always created for the currently viewed date. Do not include a "date" param — it will be ignored. If user requests a different date, decline and explain they need to switch dates or use Intake tab.
 
 Use exact IDs from the schedule context. If you only have names, use truckName/driverName and the system will resolve to IDs.

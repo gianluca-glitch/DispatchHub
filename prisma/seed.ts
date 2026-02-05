@@ -43,6 +43,7 @@ async function main() {
   await db.worker.deleteMany();
   await db.truck.deleteMany();
   await db.integrationConfig.deleteMany();
+  await db.dumpSite.deleteMany();
 
   // ── TRUCKS (18 total, from IntelliShift screenshot) ───────
   const truckData = [
@@ -154,10 +155,10 @@ async function main() {
 
   console.log(`  ✅ 3 projects with assignments`);
 
-  // ── JOBS (all dated TODAY at noon local; 2–3 jobs per truck for map variety) ──
-  // Boroughs must match address: Manhattan → MANHATTAN, Brooklyn → BROOKLYN, etc.
+  // ── JOBS ───────────────────────────────────────────────────
+  // 6 trucks × 10 stops = 60 routed + 1 Tony overlap + 1 unassigned = 62 total
   const jobsData: Array<{
-    type: 'PICKUP' | 'DROP_OFF' | 'DUMP_OUT' | 'SWAP';
+    type: 'PICKUP' | 'DROP_OFF' | 'DUMP_OUT';
     customer: string;
     address: string;
     borough: 'MANHATTAN' | 'BROOKLYN' | 'QUEENS' | 'BRONX' | 'STATEN_ISLAND';
@@ -172,22 +173,82 @@ async function main() {
     status?: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'DELAYED';
     projectId?: string;
   }> = [
-    // Box Truck 5: 3 stops — Manhattan x2, Brooklyn x1
-    { type: 'PICKUP', customer: 'Manhattan Tower Group', address: '450 W 33rd St, Manhattan', borough: 'MANHATTAN', date: today, time: '06:00', truckId: trucks['Box Truck 5'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '30yd', status: 'SCHEDULED', notes: 'Demolition debris pickup — rear entrance' },
-    { type: 'SWAP', customer: 'Metro Demo Group', address: '138 W 138th St, Manhattan', borough: 'MANHATTAN', date: today, time: '07:00', truckId: trucks['Box Truck 5'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'HIGH', containerSize: '30yd', status: 'DELAYED', projectId: bloomberg.id, notes: 'Dumpster swap — Bloomberg project' },
-    { type: 'PICKUP', customer: 'Harbor View Development', address: '310 Flatbush Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '08:00', truckId: trucks['Box Truck 5'].id, driverId: workers['Tony Russo'].id, source: 'FORM', priority: 'NORMAL', containerSize: '30yd', status: 'DELAYED', notes: 'Scheduled pickup — Prospect Heights' },
-    // Container 13: 3 stops — Brooklyn, Queens
-    { type: 'DROP_OFF', customer: 'BK Construction LLC', address: '789 Flatbush Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '06:30', truckId: trucks['Container 13'].id, driverId: workers['Ray Jimenez'].id, source: 'EMAIL', priority: 'HIGH', containerSize: '20yd', status: 'SCHEDULED', notes: 'Container delivery' },
-    { type: 'DUMP_OUT', customer: 'Queens Boulevard Partners', address: '61-15 Queens Blvd, Woodside, NY', borough: 'QUEENS', date: today, time: '09:00', truckId: trucks['Container 13'].id, driverId: workers['Ray Jimenez'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '30yd', status: 'IN_PROGRESS', notes: 'Demolition project haul — gate code 4455' },
-    { type: 'PICKUP', customer: 'Astoria Demo LLC', address: '28-15 Astoria Blvd, Queens', borough: 'QUEENS', date: today, time: '11:00', truckId: trucks['Container 13'].id, driverId: workers['Ray Jimenez'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Astoria pickup' },
-    // Roll Off 10: 2 stops — Bronx, Staten Island
-    { type: 'DROP_OFF', customer: 'Bronx Hauling Co', address: '2100 Bronx Park East, Bronx', borough: 'BRONX', date: today, time: '10:00', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'FORM', priority: 'URGENT', containerSize: '40yd', status: 'SCHEDULED', projectId: apex.id, notes: 'Roll-off delivery — Apex site' },
-    { type: 'PICKUP', customer: 'SI Waste Solutions', address: '300 Father Capodanno Blvd, Staten Island', borough: 'STATEN_ISLAND', date: today, time: '14:00', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '40yd', status: 'SCHEDULED', notes: 'Staten Island roll-off' },
-    // Packer 07: 2 stops — Staten Island, Bronx
-    { type: 'PICKUP', customer: 'SI Waste Solutions', address: '300 Father Capodanno Blvd, Staten Island', borough: 'STATEN_ISLAND', date: today, time: '11:00', truckId: trucks['Packer 07'].id, driverId: workers['Carlos Vega'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'COMPLETED', notes: 'Bulk waste pickup' },
-    { type: 'DROP_OFF', customer: 'Bronx Hauling Co', address: '950 Garrison Ave, Bronx', borough: 'BRONX', date: today, time: '13:00', truckId: trucks['Packer 07'].id, driverId: workers['Carlos Vega'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Garrison Ave drop' },
-    // Unassigned
-    { type: 'PICKUP', customer: 'Williamsburg Collective', address: '120 N 6th St, Brooklyn', borough: 'BROOKLYN', date: today, time: '12:00', source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', projectId: wburg.id, notes: 'Unassigned — pending intake approval' },
+    // ── Packer 07 — Tony Russo — Bronx route (10 DUMP_OUT) ──
+    { type: 'DUMP_OUT', customer: 'Pelham Bay Construction', address: '1800 Pelham Pkwy S, Bronx', borough: 'BRONX', date: today, time: '06:00', truckId: trucks['Packer 07'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'COMPLETED', notes: '20yd mini — 3rd floor demo debris' },
+    { type: 'DUMP_OUT', customer: 'Morris Park Partners', address: '900 Morris Park Ave, Bronx', borough: 'BRONX', date: today, time: '06:35', truckId: trucks['Packer 07'].id, driverId: workers['Tony Russo'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'COMPLETED', notes: 'Gate code 4455' },
+    { type: 'DUMP_OUT', customer: 'Parkchester Dev', address: '1800 Eastchester Rd, Bronx', borough: 'BRONX', date: today, time: '07:15', truckId: trucks['Packer 07'].id, driverId: workers['Tony Russo'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'IN_PROGRESS', notes: 'Container behind building C' },
+    { type: 'DUMP_OUT', customer: 'Bronx River Partners', address: '1600 Bronx River Ave, Bronx', borough: 'BRONX', date: today, time: '08:00', truckId: trucks['Packer 07'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Ask for site super Mike' },
+    { type: 'DUMP_OUT', customer: 'Soundview Industrial', address: '1100 Metcalf Ave, Bronx', borough: 'BRONX', date: today, time: '08:45', truckId: trucks['Packer 07'].id, driverId: workers['Tony Russo'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Metcalf Ave — gate 7788' },
+    { type: 'DUMP_OUT', customer: 'Throggs Neck LLC', address: '3200 E Tremont Ave, Bronx', borough: 'BRONX', date: today, time: '09:30', truckId: trucks['Packer 07'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'HIGH', containerSize: '20yd', status: 'SCHEDULED', notes: 'Concrete debris — alley access' },
+    { type: 'DUMP_OUT', customer: 'Castle Hill Partners', address: '2100 Bruckner Blvd, Bronx', borough: 'BRONX', date: today, time: '10:15', truckId: trucks['Packer 07'].id, driverId: workers['Tony Russo'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Bruckner — loading dock' },
+    { type: 'DUMP_OUT', customer: 'Hunts Point Terminal', address: '950 Garrison Ave, Bronx', borough: 'BRONX', date: today, time: '11:00', truckId: trucks['Packer 07'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Market district — badge required' },
+    { type: 'DUMP_OUT', customer: 'Port Morris Industrial', address: '800 E 132nd St, Bronx', borough: 'BRONX', date: today, time: '11:45', truckId: trucks['Packer 07'].id, driverId: workers['Tony Russo'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Heavy debris — call ahead' },
+    { type: 'DUMP_OUT', customer: 'Mott Haven Dev', address: '400 E 150th St, Bronx', borough: 'BRONX', date: today, time: '14:30', truckId: trucks['Packer 07'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Structural demo — last stop' },
+
+    // ── Packer 11 — Pete Nowak — Manhattan route (10 DUMP_OUT, 2-3 Bloomberg) — PROJECT LOCK ──
+    { type: 'DUMP_OUT', customer: 'Metro Demo Group', address: '138 W 138th St, Manhattan', borough: 'MANHATTAN', date: today, time: '06:30', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'PHONE', priority: 'HIGH', containerSize: '20yd', status: 'IN_PROGRESS', projectId: bloomberg.id, notes: '20yd mini — Bloomberg Tower demo debris' },
+    { type: 'DUMP_OUT', customer: 'Metro Demo Group', address: '520 W 28th St, Manhattan', borough: 'MANHATTAN', date: today, time: '07:15', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'PHONE', priority: 'HIGH', containerSize: '20yd', status: 'SCHEDULED', projectId: bloomberg.id, notes: 'Bloomberg — Chelsea staging area' },
+    { type: 'DUMP_OUT', customer: 'Hamilton Heights Dev', address: '500 W 143rd St, Manhattan', borough: 'MANHATTAN', date: today, time: '08:00', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', projectId: bloomberg.id, notes: 'Upper Manhattan — Bloomberg overflow' },
+    { type: 'DUMP_OUT', customer: 'East Harlem Partners', address: '240 E 123rd St, Manhattan', borough: 'MANHATTAN', date: today, time: '08:45', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Debris haul — alley access' },
+    { type: 'DUMP_OUT', customer: 'Midtown East Corp', address: '155 E 44th St, Manhattan', borough: 'MANHATTAN', date: today, time: '09:30', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'EMAIL', priority: 'HIGH', containerSize: '20yd', status: 'SCHEDULED', notes: 'Office reno — freight elevator only' },
+    { type: 'DUMP_OUT', customer: 'NoHo Development', address: '770 Broadway, Manhattan', borough: 'MANHATTAN', date: today, time: '10:15', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Broadway entrance — 7am-5pm dock hours' },
+    { type: 'DUMP_OUT', customer: 'Chelsea Market LLC', address: '601 W 26th St, Manhattan', borough: 'MANHATTAN', date: today, time: '11:00', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Chelsea — call super on arrival' },
+    { type: 'DUMP_OUT', customer: 'Hell\'s Kitchen LLC', address: '315 W 57th St, Manhattan', borough: 'MANHATTAN', date: today, time: '11:45', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Contact Maria ext 22' },
+    { type: 'DUMP_OUT', customer: 'Flatiron District Co', address: '44 W 18th St, Manhattan', borough: 'MANHATTAN', date: today, time: '12:30', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: '5th floor demo debris' },
+    { type: 'DUMP_OUT', customer: 'Hudson Yards Dev', address: '450 W 33rd St, Manhattan', borough: 'MANHATTAN', date: today, time: '15:00', truckId: trucks['Packer 11'].id, driverId: workers['Pete Nowak'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Hudson Yards — last stop' },
+
+    // ── Packer 12 — Carlos Vega — Brooklyn route (10 DUMP_OUT) ──
+    { type: 'DUMP_OUT', customer: 'BK Construction LLC', address: '789 Flatbush Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '06:15', truckId: trucks['Packer 12'].id, driverId: workers['Carlos Vega'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'COMPLETED', notes: 'Prospect-Lefferts — gate 4455' },
+    { type: 'DUMP_OUT', customer: 'Prospect Heights Dev', address: '310 Flatbush Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '06:50', truckId: trucks['Packer 12'].id, driverId: workers['Carlos Vega'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'IN_PROGRESS', notes: 'Loading zone in rear' },
+    { type: 'DUMP_OUT', customer: 'Vanderbilt Partners', address: '470 Vanderbilt Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '07:30', truckId: trucks['Packer 12'].id, driverId: workers['Carlos Vega'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Prospect Heights — gate code 2211' },
+    // Tony overlap conflict: Packer 12 job at 8:00 AM with Tony Russo (he's on Packer 07 at 8:00 AM too)
+    { type: 'DUMP_OUT', customer: 'Vanderbilt Ave Overflow', address: '470 Vanderbilt Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '08:00', truckId: trucks['Packer 12'].id, driverId: workers['Tony Russo'].id, source: 'PHONE', priority: 'URGENT', containerSize: '20yd', status: 'SCHEDULED', notes: 'Wrong driver assigned — Tony double-booked' },
+    { type: 'DUMP_OUT', customer: 'Atlantic Center Dev', address: '625 Atlantic Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '08:20', truckId: trucks['Packer 12'].id, driverId: workers['Carlos Vega'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Atlantic Terminal — loading dock' },
+    { type: 'DUMP_OUT', customer: 'MetroTech Center', address: '1 MetroTech Center, Brooklyn', borough: 'BROOKLYN', date: today, time: '08:45', truckId: trucks['Packer 12'].id, driverId: workers['Carlos Vega'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Downtown BK — dock C, badge required' },
+    { type: 'DUMP_OUT', customer: 'Gowanus Industrial', address: '850 3rd Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '09:30', truckId: trucks['Packer 12'].id, driverId: workers['Carlos Vega'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Gowanus — concrete debris' },
+    { type: 'DUMP_OUT', customer: 'Kent Ave LLC', address: '275 Kent Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '10:15', truckId: trucks['Packer 12'].id, driverId: workers['Carlos Vega'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Williamsburg waterfront' },
+    { type: 'DUMP_OUT', customer: 'East Williamsburg Dev', address: '500 Stagg St, Brooklyn', borough: 'BROOKLYN', date: today, time: '11:00', truckId: trucks['Packer 12'].id, driverId: workers['Carlos Vega'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Industrial lot — chain link gate' },
+    { type: 'DUMP_OUT', customer: 'Greenpoint Partners', address: '1155 Manhattan Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '11:45', truckId: trucks['Packer 12'].id, driverId: workers['Carlos Vega'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Greenpoint — contact Luis' },
+    { type: 'DUMP_OUT', customer: 'Red Hook Marine', address: '100 Pioneer St, Brooklyn', borough: 'BROOKLYN', date: today, time: '15:00', truckId: trucks['Packer 12'].id, driverId: workers['Carlos Vega'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Red Hook — waterfront access' },
+
+    // ── Packer 15 — James O'Brien — Queens route (10 DUMP_OUT) ──
+    { type: 'DUMP_OUT', customer: 'Woodside Partners', address: '61-15 Queens Blvd, Queens', borough: 'QUEENS', date: today, time: '06:00', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'COMPLETED', notes: 'Queens Blvd — Woodside' },
+    { type: 'DUMP_OUT', customer: 'Astoria Demo LLC', address: '28-15 Astoria Blvd, Queens', borough: 'QUEENS', date: today, time: '06:40', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'IN_PROGRESS', notes: 'Astoria — gate 5566' },
+    { type: 'DUMP_OUT', customer: 'LIC Industrial', address: '37-18 Northern Blvd, Queens', borough: 'QUEENS', date: today, time: '07:25', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'DELAYED', notes: 'LIC — delayed, traffic on BQE' },
+    { type: 'DUMP_OUT', customer: 'Maspeth Waste Co', address: '55-15 Grand Ave, Queens', borough: 'QUEENS', date: today, time: '08:15', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Maspeth — ask for site super' },
+    { type: 'DUMP_OUT', customer: 'Rego Park Construction', address: '91-31 Queens Blvd, Queens', borough: 'QUEENS', date: today, time: '09:00', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Rego Park — commercial' },
+    { type: 'DUMP_OUT', customer: 'Corona Partners', address: '108-50 Roosevelt Ave, Queens', borough: 'QUEENS', date: today, time: '09:45', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Roosevelt Ave — Flushing area' },
+    { type: 'DUMP_OUT', customer: 'Crescent St Dev', address: '42-15 Crescent St, Queens', borough: 'QUEENS', date: today, time: '10:30', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'LIC — Crescent St' },
+    { type: 'DUMP_OUT', customer: 'Flushing Partners', address: '135-20 39th Ave, Queens', borough: 'QUEENS', date: today, time: '11:15', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Flushing — Main St area' },
+    { type: 'DUMP_OUT', customer: 'Jamaica Industrial', address: '148-25 Archer Ave, Queens', borough: 'QUEENS', date: today, time: '12:00', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Jamaica — gate 3344' },
+    { type: 'DUMP_OUT', customer: 'Ozone Park Dev', address: '101-20 Rockaway Blvd, Queens', borough: 'QUEENS', date: today, time: '15:00', truckId: trucks['Packer 15'].id, driverId: workers["James O'Brien"].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Ozone Park — last stop' },
+
+    // ── Packer 20 — Nick Papadopoulos — Manhattan/Bronx mixed (10 DUMP_OUT) ──
+    { type: 'DUMP_OUT', customer: 'Union Square Partners', address: '100 E 17th St, Manhattan', borough: 'MANHATTAN', date: today, time: '06:30', truckId: trucks['Packer 20'].id, driverId: workers['Nick Papadopoulos'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'COMPLETED', notes: 'Union Square — alley access' },
+    { type: 'DUMP_OUT', customer: 'Gramercy Dev', address: '200 Park Ave S, Manhattan', borough: 'MANHATTAN', date: today, time: '07:15', truckId: trucks['Packer 20'].id, driverId: workers['Nick Papadopoulos'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'IN_PROGRESS', notes: 'Park Ave S — loading dock' },
+    { type: 'DUMP_OUT', customer: 'Kips Bay Corp', address: '350 E 26th St, Manhattan', borough: 'MANHATTAN', date: today, time: '08:00', truckId: trucks['Packer 20'].id, driverId: workers['Nick Papadopoulos'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Kips Bay — gate code 2233' },
+    { type: 'DUMP_OUT', customer: 'Turtle Bay LLC', address: '420 E 42nd St, Manhattan', borough: 'MANHATTAN', date: today, time: '08:45', truckId: trucks['Packer 20'].id, driverId: workers['Nick Papadopoulos'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'UN Plaza area' },
+    { type: 'DUMP_OUT', customer: 'Co-op City Construction', address: '1400 Baychester Ave, Bronx', borough: 'BRONX', date: today, time: '10:00', truckId: trucks['Packer 20'].id, driverId: workers['Nick Papadopoulos'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Baychester — Bronx leg' },
+    { type: 'DUMP_OUT', customer: 'Allerton Partners', address: '750 Allerton Ave, Bronx', borough: 'BRONX', date: today, time: '10:45', truckId: trucks['Packer 20'].id, driverId: workers['Nick Papadopoulos'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Allerton — gate 5566' },
+    { type: 'DUMP_OUT', customer: 'Fordham Dev', address: '2500 Webster Ave, Bronx', borough: 'BRONX', date: today, time: '11:30', truckId: trucks['Packer 20'].id, driverId: workers['Nick Papadopoulos'].id, source: 'FORM', priority: 'HIGH', containerSize: '20yd', status: 'SCHEDULED', notes: 'Fordham — ask for super' },
+    { type: 'DUMP_OUT', customer: 'University Heights LLC', address: '200 W Burnside Ave, Bronx', borough: 'BRONX', date: today, time: '12:15', truckId: trucks['Packer 20'].id, driverId: workers['Nick Papadopoulos'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'University Heights' },
+    { type: 'DUMP_OUT', customer: 'Highbridge Partners', address: '1410 Ogden Ave, Bronx', borough: 'BRONX', date: today, time: '13:00', truckId: trucks['Packer 20'].id, driverId: workers['Nick Papadopoulos'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Ogden Ave — Highbridge' },
+    { type: 'DUMP_OUT', customer: 'Concourse Village', address: '750 Grand Concourse, Bronx', borough: 'BRONX', date: today, time: '15:30', truckId: trucks['Packer 20'].id, driverId: workers['Nick Papadopoulos'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Grand Concourse — last stop' },
+
+    // ── Roll Off 10 — Marco Delgado — All boroughs (10 DROP_OFF/PICKUP mix) ──
+    { type: 'DROP_OFF', customer: 'Apex Construction Corp', address: '2100 Bronx Park East, Bronx', borough: 'BRONX', date: today, time: '06:30', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'FORM', priority: 'URGENT', containerSize: '40yd', status: 'COMPLETED', projectId: apex.id, notes: 'Full container — ready for swap. Apex teardown.' },
+    { type: 'PICKUP', customer: 'Apex Construction Corp', address: '2100 Bronx Park East, Bronx', borough: 'BRONX', date: today, time: '07:30', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '40yd', status: 'IN_PROGRESS', projectId: apex.id, notes: 'Delivering empty 40yd. Apex teardown container moves.' },
+    { type: 'DROP_OFF', customer: 'Port Morris Industrial', address: '800 E 132nd St, Bronx', borough: 'BRONX', date: today, time: '08:30', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '30yd', status: 'SCHEDULED', notes: 'Hunts Point — roll-off delivery' },
+    { type: 'PICKUP', customer: 'Hunts Point Terminal', address: '950 Garrison Ave, Bronx', borough: 'BRONX', date: today, time: '09:30', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '40yd', status: 'SCHEDULED', notes: 'Market district — full container pickup' },
+    { type: 'DROP_OFF', customer: 'LIC Industrial', address: '37-18 Northern Blvd, Queens', borough: 'QUEENS', date: today, time: '10:45', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'FORM', priority: 'NORMAL', containerSize: '30yd', status: 'SCHEDULED', notes: 'Long Island City — empty delivery' },
+    { type: 'PICKUP', customer: 'Queens Blvd Partners', address: '61-15 Queens Blvd, Queens', borough: 'QUEENS', date: today, time: '11:45', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '40yd', status: 'SCHEDULED', notes: 'Woodside — commercial demo, full container' },
+    { type: 'DROP_OFF', customer: 'Gowanus Industrial', address: '850 3rd Ave, Brooklyn', borough: 'BROOKLYN', date: today, time: '13:00', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'EMAIL', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Gowanus — empty 20yd delivery' },
+    { type: 'PICKUP', customer: 'Red Hook Marine', address: '100 Pioneer St, Brooklyn', borough: 'BROOKLYN', date: today, time: '14:00', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '30yd', status: 'SCHEDULED', notes: 'Red Hook — full container ready' },
+    { type: 'DROP_OFF', customer: 'St George Terminal', address: '1 Bay St, Staten Island', borough: 'STATEN_ISLAND', date: today, time: '15:15', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'FORM', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', notes: 'Staten Island — ferry area' },
+    { type: 'PICKUP', customer: 'Maspeth Waste Co', address: '55-15 Grand Ave, Queens', borough: 'QUEENS', date: today, time: '16:00', truckId: trucks['Roll Off 10'].id, driverId: workers['Marco Delgado'].id, source: 'PHONE', priority: 'NORMAL', containerSize: '40yd', status: 'SCHEDULED', notes: 'Maspeth — last stop, roll-off swap' },
+
+    // ── Unassigned (Williamsburg project) ──
+    { type: 'DUMP_OUT', customer: 'BK Construction LLC', address: '120 N 6th St, Brooklyn', borough: 'BROOKLYN', date: today, time: '12:00', source: 'PHONE', priority: 'NORMAL', containerSize: '20yd', status: 'SCHEDULED', projectId: wburg.id, notes: 'Williamsburg gut reno — unassigned, needs truck/driver' },
   ];
 
   const createdJobs: Array<{ id: string; truckId: string | null; time: string }> = [];
@@ -212,7 +273,38 @@ async function main() {
     });
     if (job.truckId) createdJobs.push({ id: job.id, truckId: job.truckId, time: j.time });
   }
-  console.log(`  ✅ ${jobsData.length} jobs (assigned trucks have 2–3 stops each, 1 unassigned)`);
+  console.log(`  ✅ ${jobsData.length} jobs (60 routed + 1 Tony overlap + 1 unassigned = 62 total)`);
+
+  // ── DUMP SITES ─────────────────────────────────────────────
+  const dumpSitesData = [
+    { name: 'New Style Recycling', address: '49-10 Grand Ave, Maspeth, NY 11378', borough: 'QUEENS' as const, lat: 40.7214, lng: -73.8985, type: 'KEY' as const, phone: '718-326-4175', hours: 'Mon-Fri 6AM-5PM, Sat 6AM-1PM', accepts: ['C&D', 'Demo Debris', 'Concrete', 'Metal', 'Wood', 'Brick'], notes: 'Primary EDCC dump. Family-owned MWBE. Off LIE Exit 19.' },
+    { name: 'Waste Management', address: '38-50 Review Ave, LIC, NY 11101', borough: 'QUEENS' as const, lat: 40.7276, lng: -73.9245, type: 'KEY' as const, phone: '718-786-2300', hours: 'Mon-Fri 5AM-8PM, Sat 5AM-4PM', accepts: ['C&D', 'MSW', 'Demo Debris', 'Bulk Waste'], notes: 'High-volume facility near Kosciuszko Bridge. Long wait times after 2PM.' },
+    { name: 'American Recycling Mgmt', address: '55-15 Grand Ave, Maspeth, NY 11378', borough: 'QUEENS' as const, lat: 40.7195, lng: -73.9028, type: 'KEY' as const, phone: '718-326-7900', hours: 'Mon-Fri 6AM-6PM, Sat 6AM-2PM', accepts: ['C&D', 'Demo Debris', 'Organic', 'Metal', 'Concrete'], notes: 'Backup dump. Good for mixed loads. Roll-off swaps available.' },
+    { name: 'Hamilton Ave Marine Transfer Station', address: '20 Hamilton Ave, Brooklyn, NY 11231', borough: 'BROOKLYN' as const, lat: 40.6783, lng: -73.9988, type: 'GENERAL' as const, hours: 'Mon-Sat 6AM-4PM', accepts: ['MSW', 'Bulk Waste'], notes: 'DSNY marine transfer station' },
+    { name: 'East 91st St Marine Transfer Station', address: '524 E 91st St, Manhattan, NY 10128', borough: 'MANHATTAN' as const, lat: 40.7803, lng: -73.9437, type: 'GENERAL' as const, hours: 'Mon-Sat 6AM-4PM', accepts: ['MSW', 'Bulk Waste'], notes: 'DSNY marine transfer station' },
+    { name: 'Tully Environmental', address: '127-20 34th Ave, Flushing, NY 11368', borough: 'QUEENS' as const, lat: 40.7612, lng: -73.8347, type: 'GENERAL' as const, hours: 'Mon-Fri 6AM-6PM', accepts: ['C&D', 'Demo Debris', 'Fill'], notes: 'Large C&D processor' },
+    { name: 'Hi-Tech Resource Recovery', address: '130 Varick Ave, Brooklyn, NY 11237', borough: 'BROOKLYN' as const, lat: 40.7065, lng: -73.9273, type: 'GENERAL' as const, hours: 'Mon-Fri 6AM-5PM', accepts: ['C&D', 'Metal', 'Concrete'], notes: 'C&D processing near Newtown Creek' },
+    { name: 'Metropolitan Transfer Station', address: '287 Halleck St, Bronx, NY 10474', borough: 'BRONX' as const, lat: 40.8142, lng: -73.8831, type: 'GENERAL' as const, hours: 'Mon-Fri 5AM-7PM, Sat 5AM-3PM', accepts: ['MSW', 'C&D', 'Bulk Waste'], notes: 'Hunts Point area' },
+    { name: 'Richmond Recycling', address: '200 Muldoon Ave, Staten Island, NY 10306', borough: 'STATEN_ISLAND' as const, lat: 40.5674, lng: -74.1196, type: 'GENERAL' as const, hours: 'Mon-Fri 6AM-5PM, Sat 6AM-1PM', accepts: ['C&D', 'Demo Debris', 'Fill', 'Metal'], notes: "SI's main C&D transfer station" },
+    { name: 'Cooper Tank & Welding', address: '123 Varick Ave, Brooklyn, NY 11237', borough: 'BROOKLYN' as const, lat: 40.7058, lng: -73.9279, type: 'GENERAL' as const, hours: 'Mon-Fri 6AM-5PM', accepts: ['C&D', 'Concrete', 'Asphalt'], notes: 'C&D processing' },
+  ];
+  for (const d of dumpSitesData) {
+    await db.dumpSite.create({
+      data: {
+        name: d.name,
+        address: d.address,
+        borough: d.borough,
+        lat: d.lat,
+        lng: d.lng,
+        type: d.type,
+        phone: d.phone ?? null,
+        hours: d.hours ?? null,
+        accepts: d.accepts,
+        notes: d.notes ?? null,
+      },
+    });
+  }
+  console.log(`  ✅ ${dumpSitesData.length} dump sites (3 KEY, 7 GENERAL)`);
 
   // ── ROUTES (for trucks with jobs today) ────────────────────
   const jobsByTruck = new Map<string, typeof createdJobs>();
@@ -270,7 +362,7 @@ async function main() {
     {
       source: 'PHONE', rawContent: 'Yeah uh... we got a situation at the Grand Concourse site... need to swap out the container...',
       audioUrl: '#', confidence: 62, status: 'FLAGGED',
-      parsedCustomer: 'Bronx Hauling Co', parsedPhone: '718-555-0444', parsedServiceType: 'SWAP', parsedAddress: 'Grand Concourse, Bronx', parsedContainerSize: '40yd', parsedNotes: 'Container full, caller unclear on details',
+      parsedCustomer: 'Bronx Hauling Co', parsedPhone: '718-555-0444', parsedServiceType: 'PICKUP', parsedAddress: 'Grand Concourse, Bronx', parsedContainerSize: '40yd', parsedNotes: 'Container full, caller unclear on details',
     },
   ]});
   console.log(`  ✅ 3 intake items`);

@@ -203,8 +203,6 @@ enum JobType {
   PICKUP
   DROP_OFF
   DUMP_OUT
-  SWAP
-  HAUL
 }
 
 enum JobStatus {
@@ -423,6 +421,35 @@ model RouteStop {
   departedAt DateTime?
 
   @@index([routeId, sequence])
+}
+
+// ─────────────────────────────────────────────────────────
+// DUMP SITES
+// ─────────────────────────────────────────────────────────
+
+model DumpSite {
+  id        String       @id @default(cuid())
+  name      String
+  address   String
+  borough   Borough
+  lat       Float
+  lng       Float
+  type      DumpSiteType
+  phone     String?
+  hours     String?      // "Mon-Fri 6AM-6PM, Sat 6AM-2PM"
+  accepts   String[]     // ["C&D", "Demo Debris", "Metal", "Concrete"]
+  notes     String?
+
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([type])
+  @@index([borough])
+}
+
+enum DumpSiteType {
+  KEY        // EDCC's primary dumps — highlighted on map
+  GENERAL    // Other available transfer stations — shown as reference
 }
 
 // ─────────────────────────────────────────────────────────

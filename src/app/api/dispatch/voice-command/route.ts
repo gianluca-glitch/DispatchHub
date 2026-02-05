@@ -131,8 +131,6 @@ export async function POST(req: NextRequest) {
             'pickup': 'PICKUP', 'pick up': 'PICKUP', 'pick-up': 'PICKUP',
             'drop off': 'DROP_OFF', 'drop-off': 'DROP_OFF', 'dropoff': 'DROP_OFF',
             'dump out': 'DUMP_OUT', 'dump-out': 'DUMP_OUT', 'dumpout': 'DUMP_OUT',
-            'swap': 'SWAP',
-            'haul': 'HAUL',
           };
           const rawType = (p.type ?? 'pickup').toLowerCase();
           const jobType = typeMap[rawType] ?? p.type ?? 'PICKUP';

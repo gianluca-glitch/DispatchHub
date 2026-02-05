@@ -8,7 +8,7 @@ export type TruckType = 'BOX_TRUCK' | 'CONTAINER' | 'PACKER' | 'ROLL_OFF' | 'SER
 export type TruckStatus = 'AVAILABLE' | 'EN_ROUTE' | 'ON_SITE' | 'MAINTENANCE' | 'OUT_OF_SERVICE';
 export type WorkerRole = 'DRIVER' | 'LABORER' | 'FOREMAN' | 'OPERATOR';
 export type WorkerStatus = 'AVAILABLE' | 'ON_SITE' | 'EN_ROUTE' | 'OFF_DUTY' | 'OUT_SICK' | 'VACATION';
-export type JobType = 'PICKUP' | 'DROP_OFF' | 'DUMP_OUT' | 'SWAP' | 'HAUL';
+export type JobType = 'PICKUP' | 'DROP_OFF' | 'DUMP_OUT';
 export type JobStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'DELAYED';
 export type Borough = 'MANHATTAN' | 'BROOKLYN' | 'QUEENS' | 'BRONX' | 'STATEN_ISLAND';
 export type IntakeSource = 'PHONE' | 'EMAIL' | 'FORM';
@@ -41,7 +41,7 @@ export const BOROUGH_LABELS: Record<Borough, string> = {
 };
 
 export const JOB_TYPE_LABELS: Record<JobType, string> = {
-  PICKUP: 'Pickup', DROP_OFF: 'Drop-Off', DUMP_OUT: 'Dump-Out', SWAP: 'Swap', HAUL: 'Haul',
+  PICKUP: 'Pickup', DROP_OFF: 'Drop-Off', DUMP_OUT: 'Dump-Out',
 };
 
 export const WORKER_ROLE_LABELS: Record<WorkerRole, string> = {

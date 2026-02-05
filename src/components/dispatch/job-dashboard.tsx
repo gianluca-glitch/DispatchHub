@@ -45,7 +45,7 @@ function jobDateStr(job: CartingJob): string {
   return (d as unknown as string).slice(0, 10);
 }
 
-const JOB_TYPES: JobType[] = ['PICKUP', 'DROP_OFF', 'SWAP', 'DUMP_OUT', 'HAUL'];
+const JOB_TYPES: JobType[] = ['PICKUP', 'DROP_OFF', 'DUMP_OUT'];
 const JOB_STATUSES: JobStatus[] = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'DELAYED'];
 const PRIORITIES: Priority[] = ['NORMAL', 'HIGH', 'URGENT'];
 const BOROUGHS: Borough[] = ['MANHATTAN', 'BROOKLYN', 'QUEENS', 'BRONX', 'STATEN_ISLAND'];

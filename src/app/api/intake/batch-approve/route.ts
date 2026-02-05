@@ -5,7 +5,7 @@ import { detectConflicts } from '@/lib/conflicts';
 import type { BatchApproveItem } from '@/types';
 import type { Borough, JobType } from '@prisma/client';
 
-const VALID_JOB_TYPES: JobType[] = ['PICKUP', 'DROP_OFF', 'DUMP_OUT', 'SWAP'];
+const VALID_JOB_TYPES: JobType[] = ['PICKUP', 'DROP_OFF', 'DUMP_OUT'];
 const DEFAULT_BOROUGH: Borough = 'MANHATTAN';
 
 // POST /api/intake/batch-approve — create jobs from preview queue, confirm each, return job IDs + warnings
