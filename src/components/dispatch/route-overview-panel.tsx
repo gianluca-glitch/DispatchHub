@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { useRoutes } from '@/hooks';
 import type { TruckRoute, RoutePoint, JobStatus } from '@/types';
 import { JOB_STATUS_LABELS, BOROUGH_LABELS } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 
 const LeafletMap = dynamic(() => import('./leaflet-map').then((m) => m.LeafletMap), { ssr: false });
 
@@ -190,7 +190,7 @@ export function RouteOverviewPanel({
                                 )}
                               >
                                 <span className="font-mono text-xs text-text-3 w-5 shrink-0">{idx + 1}.</span>
-                                <span className="font-mono text-xs text-text-2 w-12 shrink-0">{stop.time}</span>
+                                <span className="font-mono text-xs text-text-2 w-12 shrink-0">{formatTime(stop.time)}</span>
                                 <span className="font-medium text-text-0 truncate min-w-0 flex-1">{stop.customer}</span>
                                 <span className="text-xs text-text-3 shrink-0">
                                   {BOROUGH_LABELS[stop.borough as keyof typeof BOROUGH_LABELS] ?? stop.borough}
@@ -229,7 +229,7 @@ export function RouteOverviewPanel({
                         className="w-full flex items-center gap-2 py-1.5 px-3 text-left text-sm hover:bg-amber/10 transition-colors"
                         onClick={() => onOpenJob(j.jobId)}
                       >
-                        <span className="font-mono text-xs text-text-2 w-12 shrink-0">{j.time}</span>
+                        <span className="font-mono text-xs text-text-2 w-12 shrink-0">{formatTime(j.time)}</span>
                         <span className="font-medium text-text-0 truncate flex-1">{j.customer}</span>
                         <span className="text-xs text-text-3 shrink-0">
                           {BOROUGH_LABELS[j.borough as keyof typeof BOROUGH_LABELS] ?? j.borough}

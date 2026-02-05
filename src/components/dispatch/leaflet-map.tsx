@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import L from 'leaflet';
 import type { RoutePoint, JobStatus, Borough } from '@/types';
 import { JOB_STATUS_LABELS } from '@/types';
+import { formatTime } from '@/lib/utils';
 import 'leaflet/dist/leaflet.css';
 
 const NYC_CENTER: [number, number] = [40.7128, -74.006];
@@ -129,7 +130,7 @@ export function LeafletMap({ stops, currentStopIndex, highlightJobId, onStopClic
                 <div className="font-semibold">Stop {stop.sequence + 1}</div>
                 <div className="mt-1">{stop.customer}</div>
                 <div className="text-gray-500 text-xs">{stop.address}</div>
-                <div className="mt-1 font-mono text-xs">{stop.time}</div>
+                <div className="mt-1 font-mono text-xs">{formatTime(stop.time)}</div>
                 <div className="mt-0.5 text-xs">{JOB_STATUS_LABELS[stop.status]}</div>
               </div>
             </Popup>

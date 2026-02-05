@@ -3,6 +3,7 @@
 // Runs on every edit, every approval, every assignment change
 
 import { db } from '@/lib/db';
+import { formatTime } from '@/lib/utils';
 import type { Conflict } from '@/types';
 
 export interface TentativeJob {
@@ -46,7 +47,7 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
       conflicts.push({
         type: 'TRUCK_DOUBLE_BOOK',
         severity: time === conflict.time ? 'CRITICAL' : 'WARNING',
-        message: `${truck?.name ?? 'Truck'} is also assigned to ${conflict.customer} at ${conflict.time} (${conflict.address})`,
+        message: `${truck?.name ?? 'Truck'} is also assigned to ${conflict.customer} at ${formatTime(conflict.time)} (${conflict.address})`,
         affectedJobId: conflict.id,
         affectedTruckId: truckId,
       });
@@ -59,7 +60,7 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
         conflicts.push({
           type: 'TRUCK_DOUBLE_BOOK',
           severity: time === t.time ? 'CRITICAL' : 'WARNING',
-          message: `${truck?.name ?? 'Truck'} is tentatively assigned to ${t.customer ?? 'another intake'} at ${t.time}`,
+          message: `${truck?.name ?? 'Truck'} is tentatively assigned to ${t.customer ?? 'another intake'} at ${formatTime(t.time)}`,
           affectedJobId: t.jobId,
           affectedTruckId: truckId,
         });
@@ -84,7 +85,7 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
       conflicts.push({
         type: 'DRIVER_DOUBLE_BOOK',
         severity: time === conflict.time ? 'CRITICAL' : 'WARNING',
-        message: `${driver?.name ?? 'Driver'} is also assigned to ${conflict.customer} at ${conflict.time}`,
+        message: `${driver?.name ?? 'Driver'} is also assigned to ${conflict.customer} at ${formatTime(conflict.time)}`,
         affectedJobId: conflict.id,
         affectedWorkerId: driverId,
       });
@@ -96,7 +97,7 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
         conflicts.push({
           type: 'DRIVER_DOUBLE_BOOK',
           severity: time === t.time ? 'CRITICAL' : 'WARNING',
-          message: `${driver?.name ?? 'Driver'} is tentatively assigned to ${t.customer ?? 'another intake'} at ${t.time}`,
+          message: `${driver?.name ?? 'Driver'} is tentatively assigned to ${t.customer ?? 'another intake'} at ${formatTime(t.time)}`,
           affectedJobId: t.jobId,
           affectedWorkerId: driverId,
         });
@@ -211,14 +212,14 @@ export async function detectAllConflictsForDate(date: Date): Promise<Conflict[]>
         dedupe({
           type: 'TRUCK_DOUBLE_BOOK',
           severity,
-          message: `${truckName} is also assigned to ${b.customer} at ${b.time} (${b.address})`,
+          message: `${truckName} is also assigned to ${b.customer} at ${formatTime(b.time)} (${b.address})`,
           affectedJobId: b.id,
           affectedTruckId: truckId ?? undefined,
         });
         dedupe({
           type: 'TRUCK_DOUBLE_BOOK',
           severity,
-          message: `${truckName} is also assigned to ${a.customer} at ${a.time} (${a.address})`,
+          message: `${truckName} is also assigned to ${a.customer} at ${formatTime(a.time)} (${a.address})`,
           affectedJobId: a.id,
           affectedTruckId: truckId ?? undefined,
         });
@@ -246,14 +247,14 @@ export async function detectAllConflictsForDate(date: Date): Promise<Conflict[]>
         dedupe({
           type: 'DRIVER_DOUBLE_BOOK',
           severity,
-          message: `${driverName} is also assigned to ${b.customer} at ${b.time}`,
+          message: `${driverName} is also assigned to ${b.customer} at ${formatTime(b.time)}`,
           affectedJobId: b.id,
           affectedWorkerId: driverId,
         });
         dedupe({
           type: 'DRIVER_DOUBLE_BOOK',
           severity,
-          message: `${driverName} is also assigned to ${a.customer} at ${a.time}`,
+          message: `${driverName} is also assigned to ${a.customer} at ${formatTime(a.time)}`,
           affectedJobId: a.id,
           affectedWorkerId: driverId,
         });

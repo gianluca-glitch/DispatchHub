@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const scenario = body.scenario as ScenarioInput;
   const dateParam = body.date as string | undefined;
   const date = dateParam ? new Date(dateParam) : new Date();
-  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dateOnly = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 
   if (!scenario?.type) {
     return NextResponse.json({ error: 'scenario.type required' }, { status: 400 });

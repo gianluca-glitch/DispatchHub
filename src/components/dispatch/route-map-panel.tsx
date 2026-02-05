@@ -6,7 +6,7 @@ import { useRoutes } from '@/hooks';
 import type { TruckRoute, RoutePoint, JobStatus } from '@/types';
 import { JOB_STATUS_LABELS } from '@/types';
 import { Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 
 const LeafletMap = dynamic(() => import('./leaflet-map').then((m) => m.LeafletMap), { ssr: false });
 
@@ -112,7 +112,7 @@ export function RouteMapPanel({ jobId, truckId, truckName, date }: RouteMapPanel
                           stop.sequence + 1
                         )}
                       </div>
-                      <span className="font-mono text-xs text-text-3 shrink-0">{stop.time}</span>
+                      <span className="font-mono text-xs text-text-3 shrink-0">{formatTime(stop.time)}</span>
                       <span className="font-medium text-text-0 text-sm truncate min-w-0">{stop.customer}</span>
                       <span
                         className={cn('w-1.5 h-1.5 rounded-full shrink-0 mt-1.5', stopStatusDot(stop.status))}

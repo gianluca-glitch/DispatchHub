@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useCommandCenterStore } from '@/stores';
 import type { TruckRoute, RoutePoint, Borough } from '@/types';
 import { BOROUGH_LABELS, JOB_STATUS_LABELS } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 
 const TRUCK_COLORS = [
   '#f59e0b',
@@ -281,7 +281,7 @@ export function RouteMap({
           >
             <div className="font-medium text-text-0">{tooltip.customer}</div>
             <div className="text-text-2 truncate">{tooltip.address}</div>
-            <div className="font-mono text-text-3 mt-0.5">{tooltip.time}</div>
+            <div className="font-mono text-text-3 mt-0.5">{formatTime(tooltip.time)}</div>
             <div className="text-text-3">{tooltip.truckName} · {tooltip.status}</div>
           </div>
         )}

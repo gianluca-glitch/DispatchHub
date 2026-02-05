@@ -22,7 +22,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'jobId required' }, { status: 400 });
   }
 
-  const dateOnly = new Date(dateParam + 'T12:00:00');
+  const [y, m, d] = dateParam.split('-').map(Number);
+  const dateOnly = new Date(Date.UTC(y, m - 1, d));
 
   const [job, jobs, workers, trucks] = await Promise.all([
     db.cartingJob.findUnique({

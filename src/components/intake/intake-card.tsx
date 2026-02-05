@@ -31,7 +31,7 @@ import {
   type Worker,
   type PreviewAnalysis,
 } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useUiStore, useDispatchStore, usePreviewStore } from '@/stores';
 import { useTrucks, useWorkers, useJobs } from '@/hooks';
@@ -445,7 +445,7 @@ export function IntakeCard({
                   <div className="mt-2 space-y-1 text-sm font-mono text-text-2">
                     <div>Truck: —</div>
                     <div>Driver: —</div>
-                    <div>Time: {item.parsedTime ?? '—'}</div>
+                    <div>Time: {formatTime(item.parsedTime)}</div>
                     <div>Container: {item.parsedContainerSize ?? '—'}</div>
                   </div>
                 </div>
@@ -454,7 +454,7 @@ export function IntakeCard({
                   <div className="mt-2 space-y-1 text-sm font-mono text-text-2">
                     <div>Truck: {preview?.truckId ? trucks.find((t) => t.id === preview.truckId)?.name ?? '—' : '—'}</div>
                     <div>Driver: {preview?.driverId ? workers.find((w) => w.id === preview.driverId)?.name ?? '—' : '—'}</div>
-                    <div>Time: {preview?.timeOverride ?? item.parsedTime ?? '—'}</div>
+                    <div>Time: {formatTime(preview?.timeOverride ?? item.parsedTime)}</div>
                     <div>Container: {preview?.containerSize ?? item.parsedContainerSize ?? '—'}</div>
                   </div>
                 </div>
@@ -520,10 +520,10 @@ export function IntakeCard({
                     <SelectValue placeholder="Time" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__parsed__">Parsed ({item.parsedTime ?? '—'})</SelectItem>
+                    <SelectItem value="__parsed__">Parsed ({formatTime(item.parsedTime)})</SelectItem>
                     {TIME_SLOTS.map((t) => (
                       <SelectItem key={t} value={t}>
-                        {t}
+                        {formatTime(t)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -700,7 +700,7 @@ export function IntakeCard({
                   return (
                     <div
                       key={t}
-                      title={`${t}: ${count} jobs`}
+                      title={`${formatTime(t)}: ${count} jobs`}
                       className={cn(
                         'w-4 h-4 rounded-sm transition-colors',
                         intensity > 0.6 ? 'bg-amber' : intensity > 0.2 ? 'bg-amber/50' : 'bg-surface-3'

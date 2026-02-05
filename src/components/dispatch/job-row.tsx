@@ -10,7 +10,7 @@ import {
   type JobStatus,
   type Priority,
 } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 
 export interface JobRowProps {
   job: CartingJob;
@@ -62,7 +62,7 @@ export function JobRow({
   highlighted,
   highlightBorderColor,
 }: JobRowProps) {
-  const time = job.time || '—';
+  const time = formatTime(job.time) || '—';
   const customer = job.customer || '—';
   const address = job.address || '—';
   const truckName = job.truck?.name ?? '—';

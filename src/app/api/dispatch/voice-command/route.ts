@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { parseVoiceIntent } from '@/lib/ai/claude';
+import { formatTime } from '@/lib/utils';
 import type { VoiceCommandActionItem } from '@/types';
 
 interface JobContextBody {
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
   const text = (body.text as string)?.trim();
   const dateParam = (body.date as string) ?? new Date().toISOString().slice(0, 10);
   const date = new Date(dateParam + 'T12:00:00');
-  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dateOnly = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const conversationHistory = (body.conversationHistory as { role: string; content: string }[]) ?? [];
   const jobContext = body.jobContext as JobContextBody | null | undefined;
 
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
   const jobLines = jobs.map((j) =>
     [
       j.id,
-      j.time,
+      formatTime(j.time),
       (j.customer ?? '').slice(0, 30),
       j.borough,
       j.truck?.name ?? '—',
@@ -136,12 +137,16 @@ export async function POST(req: NextRequest) {
           const rawType = (p.type ?? 'pickup').toLowerCase();
           const jobType = typeMap[rawType] ?? p.type ?? 'PICKUP';
 
-          // Parse date — use the action's date param or fall back to the request date
+          // Use the request date (dateOnly) as default. Only override if AI returned a valid explicit date.
           let jobDate = dateOnly;
           if (p.date) {
-            const parsedDate = new Date(p.date + 'T12:00:00');
-            if (!isNaN(parsedDate.getTime())) {
-              jobDate = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+            // Parse as UTC to avoid timezone drift
+            const parts = p.date.split('-').map(Number); // [YYYY, MM, DD]
+            if (parts.length === 3 && parts[0] >= 2025) {
+              const candidate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+              if (!isNaN(candidate.getTime())) {
+                jobDate = candidate;
+              }
             }
           }
 
@@ -152,7 +157,7 @@ export async function POST(req: NextRequest) {
               customer: p.customer ?? act.jobName ?? 'New Job',
               address: p.address ?? 'TBD',
               borough: borough as 'MANHATTAN' | 'BROOKLYN' | 'QUEENS' | 'BRONX' | 'STATEN_ISLAND',
-              date: jobDate,
+              date: new Date(Date.UTC(jobDate.getUTCFullYear(), jobDate.getUTCMonth(), jobDate.getUTCDate())),
               time: p.time ?? '08:00',
               containerSize: p.containerSize ?? null,
               notes: p.notes ?? null,
@@ -222,8 +227,13 @@ export async function POST(req: NextRequest) {
           const newDate = act.params?.newDate;
           const newTime = act.params?.newTime;
           if (newDate) {
+            const parts = newDate.split('-').map(Number);
+            const utcMidnight =
+              parts.length === 3 && parts[0] >= 2025
+                ? new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]))
+                : new Date(newDate + 'T12:00:00');
             const updateData: { date: Date; time?: string } = {
-              date: new Date(newDate + 'T12:00:00'),
+              date: utcMidnight,
             };
             if (newTime) updateData.time = newTime;
             await db.cartingJob.update({

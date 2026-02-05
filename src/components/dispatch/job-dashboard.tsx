@@ -27,7 +27,7 @@ import {
   type Priority,
   type Borough,
 } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 import { Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -59,7 +59,7 @@ function describePayloadChanges(
   if (payload.status != null) parts.push(`status → ${JOB_STATUS_LABELS[payload.status as JobStatus] ?? payload.status}`);
   if (payload.borough != null) parts.push(`borough → ${BOROUGH_LABELS[payload.borough as Borough] ?? payload.borough}`);
   if (payload.date != null) parts.push(`date → ${String(payload.date)}`);
-  if (payload.time != null) parts.push(`time → ${String(payload.time)}`);
+  if (payload.time != null) parts.push(`time → ${formatTime(String(payload.time))}`);
   if (payload.containerSize != null) parts.push(`container → ${String(payload.containerSize)}`);
   if (payload.priority != null) parts.push(`priority → ${PRIORITY_LABELS[payload.priority as Priority] ?? payload.priority}`);
   if ('truckId' in payload) {
@@ -164,7 +164,7 @@ export function JobDashboard({ jobId, date, onClose, onApplied }: JobDashboardPr
               <span className="rounded bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-2 shrink-0">
                 {job.borough ? BOROUGH_LABELS[job.borough] : '—'}
               </span>
-              <span className="font-mono text-sm text-text-2 shrink-0">{job.time}</span>
+              <span className="font-mono text-sm text-text-2 shrink-0">{formatTime(job.time)}</span>
               <span className="rounded bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-2 shrink-0">
                 {job.status ? JOB_STATUS_LABELS[job.status] : '—'}
               </span>

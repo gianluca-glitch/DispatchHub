@@ -6,7 +6,7 @@ import { useCommandCenterStore } from '@/stores';
 import { useTrucks, useWorkers } from '@/hooks';
 import { Button } from '@/components/ui/button';
 import type { ScenarioResult } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 
 export interface ScenarioPanelProps {
   selectedDate: string;
@@ -229,7 +229,7 @@ export function ScenarioPanel({ selectedDate, onApplied }: ScenarioPanelProps) {
                     >
                       <div className="font-medium text-text-0">{j.customer}</div>
                       <div className="text-text-2">{j.address}</div>
-                      <div className="font-mono text-text-3 mt-0.5">{j.time}</div>
+                      <div className="font-mono text-text-3 mt-0.5">{formatTime(j.time)}</div>
                       <div className="text-success mt-1">
                         Suggested: {j.suggestedTruck} with {j.suggestedDriver}
                       </div>

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   }
 
   const dateObj = new Date(date + 'T12:00:00');
-  const dateOnly = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+  const dateOnly = new Date(Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate()));
 
   // Schedule-wide: no jobId — single batched call
   if (!jobId) {
