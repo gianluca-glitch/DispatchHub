@@ -105,15 +105,76 @@ export async function POST(req: NextRequest) {
   let appliedCount = 0;
   if (parsed.autoApply && parsed.actions?.length) {
     for (const act of parsed.actions) {
-      const job = jobs.find((j) => j.id === act.jobId);
-      if (!job) continue;
-
       try {
+        // create_job doesn't need an existing job
+        if (act.action === 'create_job') {
+          const p = act.params ?? {};
+
+          // Resolve borough
+          const boroughMap: Record<string, string> = {
+            'manhattan': 'MANHATTAN', 'nyc': 'MANHATTAN', 'new york': 'MANHATTAN',
+            'brooklyn': 'BROOKLYN', 'bk': 'BROOKLYN',
+            'queens': 'QUEENS',
+            'bronx': 'BRONX', 'bx': 'BRONX',
+            'staten island': 'STATEN_ISLAND', 'si': 'STATEN_ISLAND',
+          };
+          const rawBorough = (p.borough ?? '').toLowerCase();
+          const borough = boroughMap[rawBorough] ?? p.borough ?? 'MANHATTAN';
+
+          // Resolve truck and driver
+          const truckId = p.truckId ? resolveTruckId(p.truckId) : (p.truckName ? resolveTruckId(p.truckName) : null);
+          const driverId = p.driverId ? resolveDriverId(p.driverId) : (p.driverName ? resolveDriverId(p.driverName) : null);
+
+          // Resolve job type
+          const typeMap: Record<string, string> = {
+            'pickup': 'PICKUP', 'pick up': 'PICKUP', 'pick-up': 'PICKUP',
+            'drop off': 'DROP_OFF', 'drop-off': 'DROP_OFF', 'dropoff': 'DROP_OFF',
+            'dump out': 'DUMP_OUT', 'dump-out': 'DUMP_OUT', 'dumpout': 'DUMP_OUT',
+            'swap': 'SWAP',
+            'haul': 'HAUL',
+          };
+          const rawType = (p.type ?? 'pickup').toLowerCase();
+          const jobType = typeMap[rawType] ?? p.type ?? 'PICKUP';
+
+          // Parse date — use the action's date param or fall back to the request date
+          let jobDate = dateOnly;
+          if (p.date) {
+            const parsedDate = new Date(p.date + 'T12:00:00');
+            if (!isNaN(parsedDate.getTime())) {
+              jobDate = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+            }
+          }
+
+          await db.cartingJob.create({
+            data: {
+              type: jobType as import('@prisma/client').JobType,
+              status: 'SCHEDULED',
+              customer: p.customer ?? act.jobName ?? 'New Job',
+              address: p.address ?? 'TBD',
+              borough: borough as 'MANHATTAN' | 'BROOKLYN' | 'QUEENS' | 'BRONX' | 'STATEN_ISLAND',
+              date: jobDate,
+              time: p.time ?? '08:00',
+              containerSize: p.containerSize ?? null,
+              notes: p.notes ?? null,
+              source: 'PHONE',
+              priority: 'NORMAL',
+              truckId,
+              driverId,
+            },
+          });
+          appliedCount++;
+          continue;
+        }
+
+        // All other actions require an existing job
+        const job = jobs.find((j) => j.id === act.jobId);
+        if (!job) continue;
+
         if (act.action === 'assign_driver') {
           const driverId = act.params?.driverId ?? resolveDriverId(act.params?.driverName);
           if (driverId) {
             await db.cartingJob.update({
-              where: { id: act.jobId },
+              where: { id: act.jobId! },
               data: { driverId },
             });
             appliedCount++;
@@ -122,20 +183,20 @@ export async function POST(req: NextRequest) {
           const truckId = act.params?.truckId ?? resolveTruckId(act.params?.truckName);
           if (truckId) {
             await db.cartingJob.update({
-              where: { id: act.jobId },
+              where: { id: act.jobId! },
               data: { truckId },
             });
             appliedCount++;
           }
         } else if (act.action === 'mark_complete') {
           await db.cartingJob.update({
-            where: { id: act.jobId },
+            where: { id: act.jobId! },
             data: { status: 'COMPLETED' },
           });
           appliedCount++;
         } else if (act.action === 'mark_delayed') {
           await db.cartingJob.update({
-            where: { id: act.jobId },
+            where: { id: act.jobId! },
             data: { status: 'DELAYED' },
           });
           appliedCount++;
@@ -143,7 +204,7 @@ export async function POST(req: NextRequest) {
           const newTruckId = act.params?.newTruckId ?? resolveTruckId(act.params?.newTruckName);
           if (newTruckId) {
             await db.cartingJob.update({
-              where: { id: act.jobId },
+              where: { id: act.jobId! },
               data: { truckId: newTruckId },
             });
             appliedCount++;
@@ -152,7 +213,7 @@ export async function POST(req: NextRequest) {
           const newDriverId = act.params?.newDriverId ?? resolveDriverId(act.params?.newDriverName);
           if (newDriverId) {
             await db.cartingJob.update({
-              where: { id: act.jobId },
+              where: { id: act.jobId! },
               data: { driverId: newDriverId },
             });
             appliedCount++;
@@ -166,7 +227,7 @@ export async function POST(req: NextRequest) {
             };
             if (newTime) updateData.time = newTime;
             await db.cartingJob.update({
-              where: { id: act.jobId },
+              where: { id: act.jobId! },
               data: updateData,
             });
             appliedCount++;

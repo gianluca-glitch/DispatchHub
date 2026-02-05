@@ -501,11 +501,12 @@ export type VoiceCommandAction =
   | 'mark_delayed'
   | 'reschedule'
   | 'swap_truck'
-  | 'swap_driver';
+  | 'swap_driver'
+  | 'create_job';
 
 export interface VoiceCommandActionItem {
   action: VoiceCommandAction;
-  jobId: string;
+  jobId?: string;  // optional — create_job won't have one
   jobName: string;
   params: Record<string, string>;
 }

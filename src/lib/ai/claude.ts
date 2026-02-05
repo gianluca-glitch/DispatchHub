@@ -192,8 +192,8 @@ Response format:
   "message": "Human-readable summary of what you did or recommend",
   "actions": [
     {
-      "action": "assign_driver" | "assign_truck" | "mark_complete" | "mark_delayed" | "reschedule" | "swap_truck" | "swap_driver",
-      "jobId": "exact job id from schedule context",
+      "action": "assign_driver" | "assign_truck" | "mark_complete" | "mark_delayed" | "reschedule" | "swap_truck" | "swap_driver" | "create_job",
+      "jobId": "exact job id from schedule context (omit for create_job)",
       "jobName": "customer name for display",
       "params": { ... action-specific params }
     }
@@ -211,8 +211,14 @@ Action params:
 - reschedule: { "newDate": "YYYY-MM-DD", "newTime": "HH:MM" (optional) }
 - swap_truck: { "newTruckId": string, "newTruckName": string }
 - swap_driver: { "newDriverId": string, "newDriverName": string }
+- create_job: { "customer": string, "address": string, "borough": "MANHATTAN"|"BROOKLYN"|"QUEENS"|"BRONX"|"STATEN_ISLAND", "date": "YYYY-MM-DD", "time": "HH:MM", "type": "PICKUP"|"DROP_OFF"|"DUMP_OUT"|"SWAP"|"HAUL", "containerSize": string (optional), "truckId": string (optional), "truckName": string (optional), "driverId": string (optional), "driverName": string (optional), "notes": string (optional) }
 
-Use exact IDs from the schedule context. If you only have names, use truckName/driverName and the system will resolve to IDs.`,
+Use exact IDs from the schedule context. If you only have names, use truckName/driverName and the system will resolve to IDs.
+
+RULES for create_job:
+- For create_job: jobId should be omitted. jobName should be the customer name. If the user doesn't specify a customer name, use a descriptive name like "NYC Pickup" or "BK Drop-off". If no address given, use a reasonable default for the borough. If no type given, default to "PICKUP". Source is always "PHONE" for dispatcher-created jobs.
+- When the user says "add a stop" or "new job" or "schedule a pickup" etc, use create_job. Don't try to assign_truck/assign_driver to a non-existent job.
+- Multiple stops in one command = multiple create_job actions.`,
           cache_control: { type: 'ephemeral' },
         },
         {
