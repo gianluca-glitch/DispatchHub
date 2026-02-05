@@ -153,6 +153,145 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
   return conflicts;
 }
 
+/** Batched schedule-wide conflict detection. Max 4 DB queries, rest in memory. */
+export async function detectAllConflictsForDate(date: Date): Promise<Conflict[]> {
+  const conflicts: Conflict[] = [];
+  const seen = new Set<string>();
+  const dedupe = (c: Conflict) => {
+    const key = `${c.type}:${c.affectedJobId ?? ''}:${c.affectedTruckId ?? ''}:${c.affectedWorkerId ?? ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    conflicts.push(c);
+  };
+
+  // Query 1: All active jobs for the date with truck and driver relations
+  const jobs = await db.cartingJob.findMany({
+    where: { date, status: { notIn: ['CANCELLED'] } },
+    include: {
+      truck: { select: { id: true, name: true } },
+      driver: { select: { id: true, name: true } },
+    },
+  });
+
+  // Query 2: All workers with OUT_SICK status
+  const sickWorkers = await db.worker.findMany({
+    where: { status: 'OUT_SICK' },
+    select: { id: true, name: true },
+  });
+  const sickIds = new Set(sickWorkers.map((w) => w.id));
+  const sickByName = new Map(sickWorkers.map((w) => [w.id, w.name]));
+
+  // Query 3: All active project truck locks (project phase ACTIVE_DEMO or CARTING)
+  const projectLocks = await db.projectTruck.findMany({
+    where: { project: { phase: { in: ['ACTIVE_DEMO', 'CARTING'] } } },
+    include: { project: { select: { id: true, name: true } } },
+  });
+  // truckId -> { projectId, projectName } (if truck locked to a project)
+  const truckToLock = new Map<string, { projectId: string; projectName: string }>();
+  for (const lock of projectLocks) {
+    truckToLock.set(lock.truckId, { projectId: lock.projectId, projectName: lock.project.name });
+  }
+
+  // ── In-memory: truck double-books (group by truckId) ──
+  const byTruck = new Map<string | null, typeof jobs>();
+  for (const job of jobs) {
+    const tid = job.truckId ?? null;
+    if (!byTruck.has(tid)) byTruck.set(tid, []);
+    byTruck.get(tid)!.push(job);
+  }
+  for (const [, group] of byTruck) {
+    if (group.length < 2) continue;
+    const truckName = group[0].truck?.name ?? 'Truck';
+    const truckId = group[0].truckId ?? undefined;
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const a = group[i];
+        const b = group[j];
+        const severity = a.time === b.time ? 'CRITICAL' : 'WARNING';
+        dedupe({
+          type: 'TRUCK_DOUBLE_BOOK',
+          severity,
+          message: `${truckName} is also assigned to ${b.customer} at ${b.time} (${b.address})`,
+          affectedJobId: b.id,
+          affectedTruckId: truckId ?? undefined,
+        });
+        dedupe({
+          type: 'TRUCK_DOUBLE_BOOK',
+          severity,
+          message: `${truckName} is also assigned to ${a.customer} at ${a.time} (${a.address})`,
+          affectedJobId: a.id,
+          affectedTruckId: truckId ?? undefined,
+        });
+      }
+    }
+  }
+
+  // ── In-memory: driver double-books (group by driverId, exclude COMPLETED) ──
+  const activeJobs = jobs.filter((j) => j.status !== 'COMPLETED');
+  const byDriver = new Map<string | null, typeof activeJobs>();
+  for (const job of activeJobs) {
+    const did = job.driverId ?? null;
+    if (!byDriver.has(did)) byDriver.set(did, []);
+    byDriver.get(did)!.push(job);
+  }
+  for (const [, group] of byDriver) {
+    if (group.length < 2) continue;
+    const driverName = group[0].driver?.name ?? 'Driver';
+    const driverId = group[0].driverId ?? undefined;
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const a = group[i];
+        const b = group[j];
+        const severity = a.time === b.time ? 'CRITICAL' : 'WARNING';
+        dedupe({
+          type: 'DRIVER_DOUBLE_BOOK',
+          severity,
+          message: `${driverName} is also assigned to ${b.customer} at ${b.time}`,
+          affectedJobId: b.id,
+          affectedWorkerId: driverId,
+        });
+        dedupe({
+          type: 'DRIVER_DOUBLE_BOOK',
+          severity,
+          message: `${driverName} is also assigned to ${a.customer} at ${a.time}`,
+          affectedJobId: a.id,
+          affectedWorkerId: driverId,
+        });
+      }
+    }
+  }
+
+  // ── In-memory: worker out-sick ──
+  for (const job of jobs) {
+    if (!job.driverId || !sickIds.has(job.driverId)) continue;
+    const name = sickByName.get(job.driverId) ?? 'Worker';
+    dedupe({
+      type: 'WORKER_OUT_SICK',
+      severity: 'CRITICAL',
+      message: `${name} is flagged OUT SICK today`,
+      affectedJobId: job.id,
+      affectedWorkerId: job.driverId,
+    });
+  }
+
+  // ── In-memory: project resource lock ──
+  for (const job of jobs) {
+    if (!job.truckId) continue;
+    const lock = truckToLock.get(job.truckId);
+    if (!lock) continue;
+    if (lock.projectId === (job.projectId ?? null)) continue; // same project is fine
+    dedupe({
+      type: 'PROJECT_RESOURCE_LOCK',
+      severity: 'WARNING',
+      message: `Truck is assigned to active project: ${lock.projectName}`,
+      affectedJobId: job.id,
+      affectedTruckId: job.truckId,
+    });
+  }
+
+  return conflicts;
+}
+
 // Quick check for the inline editor — lightweight version
 export async function quickConflictCheck(
   jobId: string,

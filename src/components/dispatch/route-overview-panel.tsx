@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import { useRoutes } from '@/hooks';
 import type { TruckRoute, RoutePoint, JobStatus } from '@/types';
 import { JOB_STATUS_LABELS, BOROUGH_LABELS } from '@/types';
 import { cn } from '@/lib/utils';
@@ -19,18 +20,6 @@ export interface RouteOverviewPanelProps {
   /** When set with expandedRouteId, scroll this job into view in the expanded stop list */
   scrollToJobId?: string | null;
   onHighlightTruck?: (truckId: string | null, color?: string) => void;
-}
-
-interface RouteOverviewResponse {
-  routes?: TruckRoute[];
-  data?: TruckRoute[];
-  unassigned?: Array<{
-    jobId: string;
-    time: string;
-    customer: string;
-    address: string;
-    borough: string;
-  }>;
 }
 
 function formatRouteDate(dateStr: string): string {
@@ -75,31 +64,9 @@ export function RouteOverviewPanel({
   scrollToJobId,
   onHighlightTruck,
 }: RouteOverviewPanelProps) {
-  const [routes, setRoutes] = useState<TruckRoute[]>([]);
-  const [unassigned, setUnassigned] = useState<RouteOverviewResponse['unassigned']>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: routes = [], unassigned = [], loading } = useRoutes(date);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const scrollToRef = useRef<HTMLDivElement>(null);
-
-  const fetchRoutes = useCallback(() => {
-    setLoading(true);
-    fetch('/api/dispatch/routes?date=' + encodeURIComponent(date))
-      .then((res) => res.json())
-      .then((data: RouteOverviewResponse) => {
-        const list = data.routes ?? data.data ?? [];
-        setRoutes(Array.isArray(list) ? list : []);
-        setUnassigned(Array.isArray(data.unassigned) ? data.unassigned : []);
-      })
-      .catch(() => {
-        setRoutes([]);
-        setUnassigned([]);
-      })
-      .finally(() => setLoading(false));
-  }, [date]);
-
-  useEffect(() => {
-    fetchRoutes();
-  }, [fetchRoutes]);
 
   useEffect(() => {
     if (expandedRouteId) setExpandedId(expandedRouteId);

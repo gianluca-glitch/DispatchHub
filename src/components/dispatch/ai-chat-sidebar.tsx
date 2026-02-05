@@ -76,11 +76,42 @@ function ScenarioCardInline({
   );
 }
 
-function conflictStatusMessage(conflicts: { message: string }[]): string {
+function conflictStatusMessage(conflicts: { type?: string; message: string; severity?: string }[]): string {
   if (conflicts.length === 0) {
     return '✅ All clear for today. What do you need?';
   }
-  const lines = ['⚠️ Schedule conflicts detected for today:', ...conflicts.map((c) => `• ${c.message}`), "I can fix these. Say 'fix it' or tell me what to change."];
+
+  const truckConflicts = conflicts.filter(c => c.type === 'TRUCK_DOUBLE_BOOK');
+  const driverConflicts = conflicts.filter(c => c.type === 'DRIVER_DOUBLE_BOOK');
+  const sickWorkers = conflicts.filter(c => c.type === 'WORKER_OUT_SICK');
+  const projectLocks = conflicts.filter(c => c.type === 'PROJECT_RESOURCE_LOCK');
+  const criticalCount = conflicts.filter(c => c.severity === 'CRITICAL').length;
+
+  const lines: string[] = [];
+  lines.push(`⚠️ ${conflicts.length} conflicts detected${criticalCount > 0 ? ` (${criticalCount} critical)` : ''}:`);
+
+  if (truckConflicts.length > 0) {
+    const names = [...new Set(truckConflicts.map(c => c.message.split(' is also')[0]))];
+    lines.push(`🚛 ${truckConflicts.length} truck double-book${truckConflicts.length > 1 ? 's' : ''}: ${names.join(', ')}`);
+  }
+  if (driverConflicts.length > 0) {
+    const names = [...new Set(driverConflicts.map(c => c.message.split(' is also')[0]))];
+    lines.push(`👷 ${driverConflicts.length} driver overlap${driverConflicts.length > 1 ? 's' : ''}: ${names.join(', ')}`);
+  }
+  if (sickWorkers.length > 0) {
+    const names = sickWorkers.map(c => c.message.replace(' is flagged OUT SICK today', ''));
+    lines.push(`🤒 ${sickWorkers.length} out sick: ${names.join(', ')}`);
+  }
+  if (projectLocks.length > 0) {
+    const projectNames = [...new Set(projectLocks.map(c => {
+      const match = c.message.match(/active project: (.+)/);
+      return match ? match[1] : c.message;
+    }))];
+    lines.push(`📋 ${projectNames.length} project lock${projectNames.length > 1 ? 's' : ''}: ${projectNames.join(', ')}`);
+  }
+
+  lines.push('');
+  lines.push("Say 'details' for the full list, or 'fix it' and I'll resolve what I can.");
   return lines.join('\n');
 }
 
@@ -130,8 +161,6 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     setSidebarOpen,
     sidebarMessages,
     addSidebarMessage,
-    lastConflictMessageDate,
-    setLastConflictMessageDate,
     triggerDispatchRefetch,
     dispatchRefetchTrigger,
     setLastSuggestedActions,
@@ -148,6 +177,8 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
+  const [greetingPosted, setGreetingPosted] = useState(false);
+  const prevDateRef = useRef(selectedDate);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -158,13 +189,23 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     if (dispatchRefetchTrigger > 0) refetchScheduleConflicts();
   }, [dispatchRefetchTrigger, refetchScheduleConflicts]);
 
+  // Reset greeting when date changes
   useEffect(() => {
+    if (prevDateRef.current !== selectedDate) {
+      setGreetingPosted(false);
+      prevDateRef.current = selectedDate;
+    }
+  }, [selectedDate]);
+
+  // Post greeting ONLY after we have real data (not before SWR returns)
+  useEffect(() => {
+    if (greetingPosted) return;
     if (conflictsLoading) return;
-    if (lastConflictMessageDate === selectedDate) return;
+    if (scheduleConflicts === undefined || scheduleConflicts === null) return;
     const content = conflictStatusMessage(conflicts);
     addSidebarMessage({ role: 'assistant', content, type: 'text' });
-    setLastConflictMessageDate(selectedDate);
-  }, [selectedDate, conflicts, conflictsLoading, addSidebarMessage, lastConflictMessageDate, setLastConflictMessageDate]);
+    setGreetingPosted(true);
+  }, [conflictsLoading, scheduleConflicts, conflicts, greetingPosted, addSidebarMessage]);
 
   const buildConversationHistory = (): { role: string; content: string }[] => {
     return sidebarMessages.slice(-6).map((m) => ({
@@ -241,10 +282,23 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
         });
       }
     } catch (e) {
+      const errMsg = e instanceof Error ? e.message : 'Command failed';
+      const isApiLimit = errMsg.includes('rate') || errMsg.includes('429') || errMsg.includes('credit');
+      const isParseError = errMsg.includes('parse') || errMsg.includes('intent');
+
+      let userMessage: string;
+      if (isApiLimit) {
+        userMessage = '⚠️ AI is temporarily unavailable (rate limit). Try again in a moment, or use manual controls.';
+      } else if (isParseError) {
+        userMessage = "⚠️ I didn't understand that. Try something like: \"assign truck 7 to the BK job\" or \"swap Ray's driver\".";
+      } else {
+        userMessage = `⚠️ Something went wrong: ${errMsg}. Try again or use manual controls.`;
+      }
+
       addSidebarMessage({
         role: 'assistant',
-        content: e instanceof Error ? e.message : 'Command failed',
-        type: 'query',
+        content: userMessage,
+        type: 'text',
       });
     } finally {
       setLoading(false);

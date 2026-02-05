@@ -1,102 +1,165 @@
-// DispatchHub — Data Hooks
-// Starter hooks using native fetch. Swap to React Query/SWR when ready.
+// DispatchHub — Data Hooks (SWR with dedup)
 // Import: import { useJobs, useWorkers, useTrucks } from '@/hooks';
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import useSWR from 'swr';
 import type { CartingJob, Worker, Truck, IntakeItem, DemoProject, ChangeLogEntry, Conflict, TruckRoute } from '@/types';
 
-// ── Generic fetcher ─────────────────────────────────────────
+const SWR_OPTIONS = {
+  dedupingInterval: 5000,
+  revalidateOnFocus: false,
+  revalidateOnReconnect: false,
+};
 
-function useFetch<T>(url: string, deps: any[] = []) {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(!!url);
-  const [error, setError] = useState<string | null>(null);
+async function fetcher<T = unknown>(url: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(String(res.status));
+  const json = await res.json();
+  return (json.data !== undefined ? json.data : json) as T;
+}
 
-  const refetch = useCallback(async () => {
-    if (!url) {
-      setData(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`${res.status}`);
-      const json = await res.json();
-      setData(json.data ?? json);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [url]);
-
-  useEffect(() => { refetch(); }, [refetch, ...deps]);
-
-  return { data, loading, error, refetch };
+// Routes API returns { data, routes, unassigned }
+interface RoutesResponse {
+  routes?: TruckRoute[];
+  data?: TruckRoute[];
+  unassigned?: Array<{ jobId: string; time: string; customer: string; address: string; borough: string }>;
+}
+async function routesFetcher(url: string): Promise<RoutesResponse> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
 }
 
 // ── Jobs ────────────────────────────────────────────────────
 
 export function useJobs(date: string) {
-  return useFetch<CartingJob[]>(`/api/jobs?date=${date}`, [date]);
+  const key = date ? `/api/jobs?date=${date}` : null;
+  const { data, error, isLoading, mutate } = useSWR<CartingJob[]>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
 }
 
 export function useJob(id: string | null) {
-  return useFetch<CartingJob>(id ? `/api/jobs/${id}` : '', [id]);
+  const key = id ? `/api/jobs/${id}` : null;
+  const { data, error, isLoading, mutate } = useSWR<CartingJob>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
 }
 
 // ── Workers ─────────────────────────────────────────────────
 
 export function useWorkers() {
-  return useFetch<Worker[]>('/api/workers');
+  const key = '/api/workers';
+  const { data, error, isLoading, mutate } = useSWR<Worker[]>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
 }
 
 // ── Trucks ──────────────────────────────────────────────────
 
 export function useTrucks() {
-  return useFetch<Truck[]>('/api/trucks');
+  const key = '/api/trucks';
+  const { data, error, isLoading, mutate } = useSWR<Truck[]>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
 }
 
-// ── Intake ──────────────────────────────────────────────────
+// ── Intake ───────────────────────────────────────────────────
 
 export function useIntake() {
-  return useFetch<IntakeItem[]>('/api/intake');
+  const key = '/api/intake';
+  const { data, error, isLoading, mutate } = useSWR<IntakeItem[]>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
 }
 
 // ── Projects ────────────────────────────────────────────────
 
 export function useProjects() {
-  return useFetch<DemoProject[]>('/api/projects');
+  const key = '/api/projects';
+  const { data, error, isLoading, mutate } = useSWR<DemoProject[]>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
 }
 
-// ── Change Log ──────────────────────────────────────────────
+// ── Change Log ───────────────────────────────────────────────
 
 export function useChangeLog(limit = 50) {
-  return useFetch<ChangeLogEntry[]>(`/api/changelog?limit=${limit}`);
+  const key = `/api/changelog?limit=${limit}`;
+  const { data, error, isLoading, mutate } = useSWR<ChangeLogEntry[]>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
 }
 
 // ── Dispatch routes ──────────────────────────────────────────
 
 export function useRoutes(date: string) {
-  return useFetch<TruckRoute[]>(`/api/dispatch/routes?date=${date}`, [date]);
+  const key = date ? `/api/dispatch/routes?date=${date}` : null;
+  const { data, error, isLoading, mutate } = useSWR<RoutesResponse>(key, routesFetcher, SWR_OPTIONS);
+  const routes = data?.routes ?? data?.data ?? [];
+  const unassigned = data?.unassigned ?? [];
+  return {
+    data: Array.isArray(routes) ? routes : [],
+    unassigned: Array.isArray(unassigned) ? unassigned : [],
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
 }
 
-// ── Conflicts ───────────────────────────────────────────────
+// ── Conflicts ────────────────────────────────────────────────
 
 export function useConflicts(jobId: string | null, date: string) {
-  return useFetch<Conflict[]>(
-    jobId ? `/api/jobs/conflicts?jobId=${jobId}&date=${date}` : '',
-    [jobId, date]
-  );
+  const key = jobId && date ? `/api/jobs/conflicts?jobId=${jobId}&date=${date}` : null;
+  const { data, error, isLoading, mutate } = useSWR<Conflict[]>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
 }
 
 /** Schedule-wide conflicts for a date (no jobId). Used by dispatch sidebar. */
 export function useScheduleConflicts(date: string) {
-  return useFetch<Conflict[]>(`/api/jobs/conflicts?date=${date}`, [date]);
+  const key = date ? `/api/jobs/conflicts?date=${date}` : null;
+  const { data, error, isLoading, mutate } = useSWR<Conflict[]>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
 }
 
 // ── Global Search ───────────────────────────────────────────
