@@ -138,17 +138,8 @@ export async function POST(req: NextRequest) {
           const jobType = typeMap[rawType] ?? p.type ?? 'PICKUP';
 
           // Use the request date (dateOnly) as default. Only override if AI returned a valid explicit date.
-          let jobDate = dateOnly;
-          if (p.date) {
-            // Parse as UTC to avoid timezone drift
-            const parts = p.date.split('-').map(Number); // [YYYY, MM, DD]
-            if (parts.length === 3 && parts[0] >= 2025) {
-              const candidate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
-              if (!isNaN(candidate.getTime())) {
-                jobDate = candidate;
-              }
-            }
-          }
+          // Date locked to UI selection — AI cannot override
+const jobDate = dateOnly;
 
           await db.cartingJob.create({
             data: {
