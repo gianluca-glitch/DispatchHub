@@ -179,8 +179,15 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
   const [applyLoading, setApplyLoading] = useState(false);
   const [greetingPosted, setGreetingPosted] = useState(false);
   const prevDateRef = useRef(selectedDate);
+  const selectedDateRef = useRef(selectedDate);
   const scrollRef = useRef<HTMLDivElement>(null);
   const typingStartDateRef = useRef<string | null>(null);
+  const loadingForDateRef = useRef<string | null>(null);
+  const isCurrentDateLoading = loading && loadingForDateRef.current === selectedDate;
+
+  useEffect(() => {
+    selectedDateRef.current = selectedDate;
+  }, [selectedDate]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -218,6 +225,16 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     setGreetingPosted(true);
   }, [conflictsLoading, scheduleConflicts, conflicts, greetingPosted, addSidebarMessage]);
 
+  const addMessageForDate = (targetDate: string, message: Parameters<typeof addSidebarMessage>[0]) => {
+    if (targetDate === selectedDateRef.current) {
+      addSidebarMessage(message);
+    } else {
+      const store = useCommandCenterStore.getState();
+      const existing = store.sidebarMessagesByDate[targetDate] ?? [];
+      store.setSidebarMessagesForDate(targetDate, [...existing, message]);
+    }
+  };
+
   const buildConversationHistory = (): { role: string; content: string }[] => {
     return sidebarMessages.slice(-6).map((m) => ({
       role: m.role,
@@ -229,12 +246,13 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
     // Use the date from when typing started, fall back to current
     const messageDate = typingStartDateRef.current ?? selectedDate;
     const text = (overrideText ?? input.trim()).trim();
-    if (!text || loading) return;
+    if (!text || isCurrentDateLoading) return;
     // Reset typing lock
     typingStartDateRef.current = null;
     const history = buildConversationHistory();
     if (!overrideText) setInput('');
-    addSidebarMessage({ role: 'user', content: text, type: 'text' });
+    addMessageForDate(messageDate, { role: 'user', content: text, type: 'text' });
+    loadingForDateRef.current = messageDate;
     setLoading(true);
     clearLastSuggestedActions();
     try {
@@ -255,7 +273,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
       if (hasActions) setLastSuggestedActions(json.actions);
 
       if (hasActions) {
-        addSidebarMessage({
+        addMessageForDate(messageDate, {
           role: 'assistant',
           content: json.message ?? '',
           type: 'agentic',
@@ -273,7 +291,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
         }
       } else if (json.type === 'scenario' && json.result) {
         const result = json.result as ScenarioResult;
-        addSidebarMessage({
+        addMessageForDate(messageDate, {
           role: 'assistant',
           content: result.recommendation ?? 'Scenario analysis',
           type: 'scenario',
@@ -281,7 +299,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
         });
       } else if (json.type === 'update' && json.result) {
         const msg = json.result?.message ?? 'Done';
-        addSidebarMessage({
+        addMessageForDate(messageDate, {
           role: 'assistant',
           content: msg,
           type: 'update',
@@ -290,7 +308,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
         triggerDispatchRefetch();
       } else {
         const display = json.message ?? json.result?.answer ?? json.result ?? '';
-        addSidebarMessage({
+        addMessageForDate(messageDate, {
           role: 'assistant',
           content: display ? String(display) : 'No response.',
           type: 'query',
@@ -310,13 +328,14 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
         userMessage = `⚠️ Something went wrong: ${errMsg}. Try again or use manual controls.`;
       }
 
-      addSidebarMessage({
+      addMessageForDate(messageDate, {
         role: 'assistant',
         content: userMessage,
         type: 'text',
       });
     } finally {
       setLoading(false);
+      loadingForDateRef.current = null;
     }
   };
 
@@ -528,7 +547,7 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
             </div>
           );
         })}
-        {loading && (
+        {loading && loadingForDateRef.current === selectedDate && (
           <div className="flex justify-start">
             <TypingIndicator />
           </div>
@@ -553,15 +572,15 @@ export function AiChatSidebar({ selectedDate, onApplied }: AiChatSidebarProps) {
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
           placeholder="Type a command..."
           className="h-9 bg-surface-2 border-border text-text-0 text-sm placeholder:text-text-3 flex-1 min-w-0"
-          disabled={loading}
+          disabled={isCurrentDateLoading}
         />
         <Button
           size="icon"
           className="h-9 w-9 shrink-0 bg-amber text-black hover:bg-amber/90"
           onClick={() => sendMessage()}
-          disabled={loading || !input.trim()}
+          disabled={isCurrentDateLoading || !input.trim()}
         >
-          {loading ? (
+          {isCurrentDateLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Send className="h-4 w-4" />
