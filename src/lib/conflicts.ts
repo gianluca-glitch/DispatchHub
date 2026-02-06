@@ -26,9 +26,54 @@ interface ConflictCheckInput {
   tentativeJobs?: TentativeJob[];
 }
 
+// ── Estimated job durations in minutes ──
+const DURATION: Record<string, number> = {
+  DUMP_OUT: 45,
+  PICKUP: 30,
+  DROP_OFF: 30,
+};
+const DEFAULT_DURATION = 30;
+
+/** Parse "HH:MM" to minutes since midnight. Returns NaN for invalid input. */
+function parseTimeToMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return NaN;
+  return h * 60 + m;
+}
+
+/**
+ * Check if two job time windows actually overlap.
+ * Conservative: returns true if either time is missing/invalid (can't prove they don't overlap).
+ */
+function timesOverlap(
+  timeA: string | null | undefined,
+  typeA: string | null | undefined,
+  timeB: string | null | undefined,
+  typeB: string | null | undefined,
+): boolean {
+  if (!timeA || !timeB) return true;
+  const startA = parseTimeToMinutes(timeA);
+  const startB = parseTimeToMinutes(timeB);
+  if (isNaN(startA) || isNaN(startB)) return true;
+
+  const endA = startA + (DURATION[typeA ?? ''] ?? DEFAULT_DURATION);
+  const endB = startB + (DURATION[typeB ?? ''] ?? DEFAULT_DURATION);
+
+  return startA < endB && startB < endA;
+}
+
 export async function detectConflicts(input: ConflictCheckInput): Promise<Conflict[]> {
   const conflicts: Conflict[] = [];
   const { jobId, date, time, truckId, driverId, workerIds = [], projectId, tentativeJobs = [] } = input;
+
+  // Fetch the current job's type so we can compute time overlap.
+  // Run in parallel with truck name lookup to fix the N+1 query.
+  const [currentJob, truck] = await Promise.all([
+    db.cartingJob.findUnique({ where: { id: jobId }, select: { type: true } }),
+    truckId ? db.truck.findUnique({ where: { id: truckId }, select: { name: true } }) : null,
+  ]);
+  const currentType = currentJob?.type ?? null;
+  const truckName = truck?.name ?? 'Truck';
 
   // 1. TRUCK DOUBLE-BOOK (DB jobs + tentative)
   if (truckId) {
@@ -39,15 +84,15 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
         date,
         status: { notIn: ['CANCELLED'] },
       },
-      select: { id: true, customer: true, time: true, address: true },
+      select: { id: true, customer: true, time: true, address: true, type: true },
     });
 
     for (const conflict of truckConflicts) {
-      const truck = await db.truck.findUnique({ where: { id: truckId }, select: { name: true } });
+      if (!timesOverlap(time, currentType, conflict.time, conflict.type)) continue;
       conflicts.push({
         type: 'TRUCK_DOUBLE_BOOK',
         severity: time === conflict.time ? 'CRITICAL' : 'WARNING',
-        message: `${truck?.name ?? 'Truck'} is also assigned to ${conflict.customer} at ${formatTime(conflict.time)} (${conflict.address})`,
+        message: `${truckName} is also assigned to ${conflict.customer} at ${formatTime(conflict.time)} (${conflict.address})`,
         affectedJobId: conflict.id,
         affectedTruckId: truckId,
       });
@@ -56,11 +101,11 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
     for (const t of tentativeJobs) {
       if (t.jobId === jobId || !t.truckId) continue;
       if (t.truckId === truckId) {
-        const truck = await db.truck.findUnique({ where: { id: truckId }, select: { name: true } });
+        if (!timesOverlap(time, currentType, t.time, null)) continue;
         conflicts.push({
           type: 'TRUCK_DOUBLE_BOOK',
           severity: time === t.time ? 'CRITICAL' : 'WARNING',
-          message: `${truck?.name ?? 'Truck'} is tentatively assigned to ${t.customer ?? 'another intake'} at ${formatTime(t.time)}`,
+          message: `${truckName} is tentatively assigned to ${t.customer ?? 'another intake'} at ${formatTime(t.time)}`,
           affectedJobId: t.jobId,
           affectedTruckId: truckId,
         });
@@ -77,11 +122,12 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
         date,
         status: { notIn: ['CANCELLED', 'COMPLETED'] },
       },
-      select: { id: true, customer: true, time: true },
+      select: { id: true, customer: true, time: true, type: true },
     });
 
     const driver = await db.worker.findUnique({ where: { id: driverId }, select: { name: true } });
     for (const conflict of driverConflicts) {
+      if (!timesOverlap(time, currentType, conflict.time, conflict.type)) continue;
       conflicts.push({
         type: 'DRIVER_DOUBLE_BOOK',
         severity: time === conflict.time ? 'CRITICAL' : 'WARNING',
@@ -94,6 +140,7 @@ export async function detectConflicts(input: ConflictCheckInput): Promise<Confli
     for (const t of tentativeJobs) {
       if (t.jobId === jobId || !t.driverId) continue;
       if (t.driverId === driverId) {
+        if (!timesOverlap(time, currentType, t.time, null)) continue;
         conflicts.push({
           type: 'DRIVER_DOUBLE_BOOK',
           severity: time === t.time ? 'CRITICAL' : 'WARNING',
@@ -193,56 +240,56 @@ export async function detectAllConflictsForDate(date: Date): Promise<Conflict[]>
     truckToLock.set(lock.truckId, { projectId: lock.projectId, projectName: lock.project.name });
   }
 
-  // ── In-memory: truck double-books (group by truckId) ──
-  const byTruck = new Map<string | null, typeof jobs>();
+  // ── In-memory: truck double-books (group by truckId, skip unassigned) ──
+  const byTruck = new Map<string, typeof jobs>();
   for (const job of jobs) {
-    const tid = job.truckId ?? null;
-    if (!byTruck.has(tid)) byTruck.set(tid, []);
-    byTruck.get(tid)!.push(job);
+    if (!job.truckId) continue;
+    if (!byTruck.has(job.truckId)) byTruck.set(job.truckId, []);
+    byTruck.get(job.truckId)!.push(job);
   }
-  for (const [, group] of byTruck) {
+  for (const [truckId, group] of byTruck) {
     if (group.length < 2) continue;
     const truckName = group[0].truck?.name ?? 'Truck';
-    const truckId = group[0].truckId ?? undefined;
     for (let i = 0; i < group.length; i++) {
       for (let j = i + 1; j < group.length; j++) {
         const a = group[i];
         const b = group[j];
+        if (!timesOverlap(a.time, a.type, b.time, b.type)) continue;
         const severity = a.time === b.time ? 'CRITICAL' : 'WARNING';
         dedupe({
           type: 'TRUCK_DOUBLE_BOOK',
           severity,
           message: `${truckName} is also assigned to ${b.customer} at ${formatTime(b.time)} (${b.address})`,
           affectedJobId: b.id,
-          affectedTruckId: truckId ?? undefined,
+          affectedTruckId: truckId,
         });
         dedupe({
           type: 'TRUCK_DOUBLE_BOOK',
           severity,
           message: `${truckName} is also assigned to ${a.customer} at ${formatTime(a.time)} (${a.address})`,
           affectedJobId: a.id,
-          affectedTruckId: truckId ?? undefined,
+          affectedTruckId: truckId,
         });
       }
     }
   }
 
-  // ── In-memory: driver double-books (group by driverId, exclude COMPLETED) ──
+  // ── In-memory: driver double-books (group by driverId, skip unassigned, exclude COMPLETED) ──
   const activeJobs = jobs.filter((j) => j.status !== 'COMPLETED');
-  const byDriver = new Map<string | null, typeof activeJobs>();
+  const byDriver = new Map<string, typeof activeJobs>();
   for (const job of activeJobs) {
-    const did = job.driverId ?? null;
-    if (!byDriver.has(did)) byDriver.set(did, []);
-    byDriver.get(did)!.push(job);
+    if (!job.driverId) continue;
+    if (!byDriver.has(job.driverId)) byDriver.set(job.driverId, []);
+    byDriver.get(job.driverId)!.push(job);
   }
-  for (const [, group] of byDriver) {
+  for (const [driverId, group] of byDriver) {
     if (group.length < 2) continue;
     const driverName = group[0].driver?.name ?? 'Driver';
-    const driverId = group[0].driverId ?? undefined;
     for (let i = 0; i < group.length; i++) {
       for (let j = i + 1; j < group.length; j++) {
         const a = group[i];
         const b = group[j];
+        if (!timesOverlap(a.time, a.type, b.time, b.type)) continue;
         const severity = a.time === b.time ? 'CRITICAL' : 'WARNING';
         dedupe({
           type: 'DRIVER_DOUBLE_BOOK',
