@@ -89,6 +89,7 @@ pnpm db:studio        # open Prisma Studio
 - API routes return `{ data: ... }` envelope
 - SWR hooks return `{ data, loading, error, refetch }`
 - Test builds with `pnpm build` before committing
+- Always commit directly to the current branch. Do not create new branches unless explicitly asked.
 
 ## Vision
 
