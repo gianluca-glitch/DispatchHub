@@ -3,7 +3,7 @@
 // Server data lives in React Query / SWR — this is for UI-only state
 
 import { create } from 'zustand';
-import type { PreviewAssignment, ScenarioInput, ScenarioResult, JobAnalysis, JobAnalysisFeedEntry, JobAnalysisResponse, VoiceCommandActionItem } from '@/types';
+import type { PreviewAssignment, ScenarioInput, ScenarioResult, JobAnalysis, JobAnalysisFeedEntry, JobAnalysisResponse, VoiceCommandActionItem, NoteCategory } from '@/types';
 
 export type SidebarMessage = {
   role: 'user' | 'assistant';
@@ -295,4 +295,58 @@ export const useCommandCenterStore = create<CommandCenterStore>((set, get) => ({
   clearModifiedFields: () => set({ modifiedFields: {} }),
 
   reset: () => set(defaultCommandCenter),
+}));
+
+// ── PROJECTS MODULE ────────────────────────────────────────
+
+export type ProjectChatMsg = {
+  role: 'user' | 'assistant';
+  content: string;
+  toolResults?: { toolName: string; success: boolean; message: string }[];
+};
+
+interface ProjectStore {
+  selectedProjectId: string | null;
+  projectDetailOpen: boolean;
+  projectDetailTab: 'crew' | 'trucks' | 'notes';
+  projectChatMessages: ProjectChatMsg[];
+  projectChatLoading: boolean;
+  projectChatOpen: boolean;
+  noteConfirmation: {
+    noteContent: string;
+    suggestedCategory: NoteCategory;
+    projectId: string;
+    projectName: string;
+  } | null;
+
+  setSelectedProject: (id: string | null) => void;
+  setProjectDetailTab: (tab: 'crew' | 'trucks' | 'notes') => void;
+  addProjectChatMessage: (msg: ProjectChatMsg) => void;
+  clearProjectChat: () => void;
+  setProjectChatLoading: (loading: boolean) => void;
+  setProjectChatOpen: (open: boolean) => void;
+  setNoteConfirmation: (confirmation: ProjectStore['noteConfirmation']) => void;
+}
+
+export const useProjectStore = create<ProjectStore>((set) => ({
+  selectedProjectId: null,
+  projectDetailOpen: false,
+  projectDetailTab: 'crew',
+  projectChatMessages: [],
+  projectChatLoading: false,
+  projectChatOpen: false,
+  noteConfirmation: null,
+
+  setSelectedProject: (id) =>
+    set({ selectedProjectId: id, projectDetailOpen: id !== null }),
+
+  setProjectDetailTab: (tab) => set({ projectDetailTab: tab }),
+
+  addProjectChatMessage: (msg) =>
+    set((state) => ({ projectChatMessages: [...state.projectChatMessages, msg] })),
+
+  clearProjectChat: () => set({ projectChatMessages: [] }),
+  setProjectChatLoading: (loading) => set({ projectChatLoading: loading }),
+  setProjectChatOpen: (open) => set({ projectChatOpen: open }),
+  setNoteConfirmation: (confirmation) => set({ noteConfirmation: confirmation }),
 }));

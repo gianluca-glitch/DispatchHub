@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Truck, Users, Calendar, Inbox, FolderKanban, Settings,
   Search, Mic, Bell, LayoutDashboard,
@@ -8,6 +8,7 @@ import {
 import { useUiStore, useDispatchStore } from '@/stores';
 import { DispatchTab } from '@/components/dispatch/dispatch-tab';
 import { IntakeTab } from '@/components/intake/intake-tab';
+import { ProjectsTab } from '@/components/projects/projects-tab';
 
 // ── TAB CONFIG ──────────────────────────────────────────────
 
@@ -28,6 +29,21 @@ const TABS = [
 export default function Home() {
   const { activeTab, setActiveTab, showSearch, setShowSearch, showChangeLog, setShowChangeLog } = useUiStore();
   const { micActive, setMicActive } = useDispatchStore();
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Mobile detection — lock nav to Projects on mobile
+  useEffect(() => {
+    const check = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      if (mobile && activeTab !== 'projects') {
+        setActiveTab('projects');
+      }
+    };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ⌘K shortcut
   useEffect(() => {
@@ -65,44 +81,58 @@ export default function Home() {
 
           {/* Tab Navigation */}
           <nav className="flex items-center">
-            {/* Tier 1 */}
-            <div className="flex items-center gap-1 mr-3">
-              {TABS.filter(t => t.tier === 1).map(tab => (
+            {isMobile ? (
+              /* Mobile: only show Projects tab */
+              <div className="flex items-center gap-1">
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-default ${
-                    activeTab === tab.id
-                      ? 'bg-amber/15 text-amber'
-                      : 'text-text-2 hover:text-text-0 hover:bg-surface-2'
-                  }`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium bg-amber/15 text-amber"
                 >
-                  <tab.icon size={16} />
-                  <span className="hidden md:inline">{tab.label}</span>
+                  <FolderKanban size={16} />
+                  <span>Projects</span>
                 </button>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <>
+                {/* Tier 1 */}
+                <div className="flex items-center gap-1 mr-3">
+                  {TABS.filter(t => t.tier === 1).map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-default ${
+                        activeTab === tab.id
+                          ? 'bg-amber/15 text-amber'
+                          : 'text-text-2 hover:text-text-0 hover:bg-surface-2'
+                      }`}
+                    >
+                      <tab.icon size={16} />
+                      <span className="hidden md:inline">{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
 
-            {/* Divider */}
-            <div className="w-px h-5 bg-border mx-1" />
+                {/* Divider */}
+                <div className="w-px h-5 bg-border mx-1" />
 
-            {/* Tier 2 */}
-            <div className="flex items-center gap-1 ml-2">
-              {TABS.filter(t => t.tier === 2).map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium transition-default ${
-                    activeTab === tab.id
-                      ? 'bg-amber/15 text-amber'
-                      : 'text-text-3 hover:text-text-1 hover:bg-surface-2'
-                  }`}
-                >
-                  <tab.icon size={14} />
-                  <span className="hidden lg:inline">{tab.label}</span>
-                </button>
-              ))}
-            </div>
+                {/* Tier 2 */}
+                <div className="flex items-center gap-1 ml-2">
+                  {TABS.filter(t => t.tier === 2).map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium transition-default ${
+                        activeTab === tab.id
+                          ? 'bg-amber/15 text-amber'
+                          : 'text-text-3 hover:text-text-1 hover:bg-surface-2'
+                      }`}
+                    >
+                      <tab.icon size={14} />
+                      <span className="hidden lg:inline">{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </nav>
         </div>
 
@@ -143,7 +173,7 @@ export default function Home() {
           {activeTab === 'dispatch' && <DispatchTab />}
           {activeTab === 'planner' && <PlaceholderTab name="Planner" description="Monthly calendar with capacity dots and conflict flags" />}
           {activeTab === 'intake' && <IntakeTab />}
-          {activeTab === 'projects' && <PlaceholderTab name="Projects" description="Demo project cards with crew assignments and Project Brain AI" />}
+          {activeTab === 'projects' && <ProjectsTab />}
           {activeTab === 'fleet' && <PlaceholderTab name="Fleet" description="18 vehicles grid with GPS status from IntelliShift" />}
           {activeTab === 'crew' && <PlaceholderTab name="Crew" description="16 workers with roles, certs, and availability" />}
           {activeTab === 'settings' && <PlaceholderTab name="Settings" description="Integration panels: IntelliShift, Twilio, Outlook, RALCO" />}

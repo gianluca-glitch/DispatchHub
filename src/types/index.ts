@@ -159,8 +159,12 @@ export interface DemoProject {
   endDate: string;
   cartingNeeds: string | null;
   notes: string | null;
-  assignedWorkers?: Worker[];
-  assignedTrucks?: Truck[];
+  estimatedCost: number | null;
+  actualCost: number | null;
+  assignedWorkers?: ProjectWorkerAssignment[];
+  assignedTrucks?: ProjectTruckAssignment[];
+  projectNotes?: ProjectNote[];
+  notesCount?: number;
   jobs?: CartingJob[];
   chatMessages?: ProjectChatMessage[];
   createdAt: string;
@@ -169,10 +173,87 @@ export interface DemoProject {
 
 export interface ProjectChatMessage {
   id: string;
-  projectId: string;
-  role: 'user' | 'ai';
+  projectId: string | null;
+  role: 'user' | 'assistant';
   text: string;
   timestamp: string;
+}
+
+// ── PROJECT NOTES ───────────────────────────────────────────
+
+export type NoteCategory =
+  | 'general' | 'workers' | 'equipment' | 'purchase_orders'
+  | 'schedule' | 'client' | 'budget' | 'change_orders' | 'permits';
+
+export const NOTE_CATEGORY_LABELS: Record<NoteCategory, string> = {
+  general: 'General', workers: 'Workers', equipment: 'Equipment',
+  purchase_orders: 'POs', schedule: 'Schedule', client: 'Client',
+  budget: 'Budget', change_orders: 'Change Orders', permits: 'Permits',
+};
+
+export const NOTE_CATEGORY_COLORS: Record<NoteCategory, string> = {
+  general: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  workers: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  equipment: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  purchase_orders: 'bg-success/20 text-success border-success/30',
+  schedule: 'bg-purple/20 text-purple border-purple/30',
+  client: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  budget: 'bg-amber/20 text-amber border-amber/30',
+  change_orders: 'bg-danger/20 text-danger border-danger/30',
+  permits: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
+};
+
+export const PHASE_COLORS: Record<ProjectPhase, string> = {
+  PLANNING: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  ACTIVE_DEMO: 'bg-amber/20 text-amber border-amber/30',
+  CARTING: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  CLEANUP: 'bg-purple/20 text-purple border-purple/30',
+  COMPLETE: 'bg-success/20 text-success border-success/30',
+};
+
+export const PHASE_LABELS: Record<ProjectPhase, string> = {
+  PLANNING: 'Planning', ACTIVE_DEMO: 'Active Demo', CARTING: 'Carting',
+  CLEANUP: 'Cleanup', COMPLETE: 'Complete',
+};
+
+export interface ProjectNote {
+  id: string;
+  projectId: string;
+  category: NoteCategory;
+  content: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectWorkerAssignment {
+  id: string;
+  projectId: string;
+  workerId: string;
+  worker: Worker;
+  role: WorkerRole;
+}
+
+export interface ProjectTruckAssignment {
+  id: string;
+  projectId: string;
+  truckId: string;
+  truck: Truck;
+}
+
+// ── ACTIVITY LOG ────────────────────────────────────────────
+
+export interface ActivityLogEntry {
+  id: string;
+  userId: string;
+  userName: string;
+  action: string;
+  module: string;
+  detail: string;
+  projectId: string | null;
+  project: { id: string; name: string } | null;
+  error: string | null;
+  createdAt: string;
 }
 
 export interface Confirmation {

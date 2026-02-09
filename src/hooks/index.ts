@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import useSWR from 'swr';
-import type { CartingJob, Worker, Truck, IntakeItem, DemoProject, ChangeLogEntry, Conflict, TruckRoute } from '@/types';
+import type { CartingJob, Worker, Truck, IntakeItem, DemoProject, ChangeLogEntry, Conflict, TruckRoute, ProjectNote } from '@/types';
 
 const SWR_OPTIONS = {
   dedupingInterval: 5000,
@@ -100,6 +100,28 @@ export function useIntake() {
 export function useProjects() {
   const key = '/api/projects';
   const { data, error, isLoading, mutate } = useSWR<DemoProject[]>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
+}
+
+export function useProject(id: string | null) {
+  const key = id ? `/api/projects/${id}` : null;
+  const { data, error, isLoading, mutate } = useSWR<DemoProject>(key, fetcher, SWR_OPTIONS);
+  return {
+    data: data ?? null,
+    loading: isLoading,
+    error: error ? String(error) : null,
+    refetch: mutate,
+  };
+}
+
+export function useProjectNotes(id: string | null) {
+  const key = id ? `/api/projects/${id}/notes` : null;
+  const { data, error, isLoading, mutate } = useSWR<ProjectNote[]>(key, fetcher, SWR_OPTIONS);
   return {
     data: data ?? null,
     loading: isLoading,

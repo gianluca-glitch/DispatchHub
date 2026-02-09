@@ -295,12 +295,16 @@ model DemoProject {
   endDate        DateTime      @db.Date
   cartingNeeds   String?       @db.Text
   notes          String?       @db.Text
+  estimatedCost  Float?
+  actualCost     Float?
 
   // Relations
   assignedWorkers ProjectWorker[]
   assignedTrucks  ProjectTruck[]
   jobs            CartingJob[]
   chatMessages    ProjectChat[]
+  projectNotes    ProjectNote[]
+  activityLogs    ActivityLog[]
 
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -315,6 +319,7 @@ model ProjectWorker {
   project   DemoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   workerId  String
   worker    Worker      @relation(fields: [workerId], references: [id])
+  role      WorkerRole  @default(LABORER)
 
   @@unique([projectId, workerId])
 }
@@ -330,12 +335,12 @@ model ProjectTruck {
 }
 
 model ProjectChat {
-  id        String      @id @default(cuid())
-  projectId String
-  project   DemoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  role      String      // "user" | "ai"
-  text      String      @db.Text
-  timestamp DateTime    @default(now())
+  id        String       @id @default(cuid())
+  projectId String?
+  project   DemoProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  role      String       // "user" | "assistant"
+  text      String       @db.Text
+  timestamp DateTime     @default(now())
 
   @@index([projectId, timestamp])
 }
@@ -487,7 +492,45 @@ model IntegrationConfig {
   config    Json     // Encrypted config blob
   status    String   @default("disconnected") // "connected", "disconnected", "pending"
   lastSync  DateTime?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────
+// PROJECT NOTES
+// ─────────────────────────────────────────────────────────
+
+model ProjectNote {
+  id         String      @id @default(cuid())
+  projectId  String
+  project    DemoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category   String      // general, workers, equipment, purchase_orders, schedule, client, budget, change_orders, permits
+  content    String      @db.Text
+  createdBy  String      // "fabio", "ai" — until real auth
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([projectId, category])
+}
+
+// ─────────────────────────────────────────────────────────
+// ACTIVITY LOG (Admin Monitoring)
+// ─────────────────────────────────────────────────────────
+
+model ActivityLog {
+  id         String       @id @default(cuid())
+  userId     String
+  userName   String
+  action     String       // chat_message, ai_response, create_project, update_project, add_note, assign_worker, remove_worker, assign_truck, remove_truck, error
+  module     String       // projects, dispatch, intake, admin
+  detail     String       @db.Text
+  projectId  String?
+  project    DemoProject? @relation(fields: [projectId], references: [id])
+  error      String?      @db.Text
+  createdAt  DateTime     @default(now())
+
+  @@index([module, action])
+  @@index([createdAt])
+  @@index([projectId])
 }
