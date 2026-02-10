@@ -286,14 +286,26 @@ export interface ProjectsChatResult {
 
 export async function projectsChatWithTools(
   chatHistory: { role: 'user' | 'assistant'; content: string }[],
-  userMessage: string
+  userMessage: string,
+  selectedProjectId?: string | null
 ): Promise<ProjectsChatResult> {
   const context = await buildContext();
   const systemPrompt = buildProjectsSystemPrompt(context);
 
+  let enrichedMessage = userMessage;
+  if (selectedProjectId) {
+    const viewedProject = await db.demoProject.findUnique({
+      where: { id: selectedProjectId },
+      select: { id: true, name: true, phase: true },
+    });
+    if (viewedProject) {
+      enrichedMessage = `[User is currently viewing: ${viewedProject.name} (id=${viewedProject.id}, phase=${viewedProject.phase}). Apply actions to this project unless they specify another.]\n\n${userMessage}`;
+    }
+  }
+
   const messages: { role: 'user' | 'assistant'; content: string }[] = [
     ...chatHistory.slice(-6),
-    { role: 'user', content: userMessage },
+    { role: 'user', content: enrichedMessage },
   ];
 
   const allToolResults: ToolResult[] = [];

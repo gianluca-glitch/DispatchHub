@@ -22,7 +22,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { message, chatHistory, greeting } = body;
+    const { message, chatHistory, greeting, selectedProjectId } = body;
 
     // Generate greeting if requested
     if (greeting) {
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
         }))
       : [];
 
-    const result = await projectsChatWithTools(history, message);
+    const result = await projectsChatWithTools(history, message, selectedProjectId);
 
     // Log AI response
     logActivity({

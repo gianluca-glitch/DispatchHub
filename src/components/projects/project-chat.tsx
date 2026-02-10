@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { mutate } from 'swr';
 import { Send, Loader2, MessageSquare, Check, X as XIcon } from 'lucide-react';
 import { useProjectStore, type ProjectChatMsg } from '@/stores';
 import { CategoryConfirm } from './category-confirm';
@@ -29,6 +30,16 @@ function ToolResultBadge({ result }: { result: { toolName: string; success: bool
   );
 }
 
+function renderMarkdown(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="text-text-0 font-semibold">{part.slice(2, -2)}</strong>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 export function ProjectChat() {
   const {
     projectChatMessages,
@@ -37,10 +48,11 @@ export function ProjectChat() {
     setProjectChatLoading,
     noteConfirmation,
     setNoteConfirmation,
+    selectedProjectId,
   } = useProjectStore();
 
   const [input, setInput] = useState('');
-  const [greetingLoaded, setGreetingLoaded] = useState(false);
+  const greetingFired = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll
@@ -50,8 +62,8 @@ export function ProjectChat() {
 
   // AI greeting on first load
   useEffect(() => {
-    if (greetingLoaded || projectChatMessages.length > 0) return;
-    setGreetingLoaded(true);
+    if (greetingFired.current || projectChatMessages.length > 0) return;
+    greetingFired.current = true;
 
     (async () => {
       try {
@@ -67,7 +79,7 @@ export function ProjectChat() {
         addProjectChatMessage({ role: 'assistant', content: 'Projects loaded. What do you need?' });
       }
     })();
-  }, [greetingLoaded, projectChatMessages.length, addProjectChatMessage]);
+  }, [projectChatMessages.length, addProjectChatMessage]);
 
   const buildHistory = (): { role: string; content: string }[] =>
     projectChatMessages.slice(-6).map((m) => ({ role: m.role, content: m.content }));
@@ -84,7 +96,7 @@ export function ProjectChat() {
       const res = await fetch('/api/projects/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, chatHistory: buildHistory() }),
+        body: JSON.stringify({ message: text, chatHistory: buildHistory(), selectedProjectId }),
       });
 
       const json = await res.json();
@@ -116,6 +128,11 @@ export function ProjectChat() {
         content: response ?? 'Done.',
         toolResults: results,
       });
+
+      // Revalidate SWR caches if tools made changes
+      if (results.length > 0) {
+        mutate((key: string) => typeof key === 'string' && key.startsWith('/api/projects'), undefined, { revalidate: true });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Connection failed';
       addProjectChatMessage({
@@ -161,7 +178,7 @@ export function ProjectChat() {
             <div key={i} className="flex justify-start">
               <div className="max-w-[95%] w-full space-y-1.5">
                 <div className="px-3 py-2 rounded-lg rounded-tl-sm bg-surface-2 text-text-1 border border-border text-sm break-words whitespace-pre-wrap">
-                  {msg.content}
+                  {renderMarkdown(msg.content)}
                 </div>
                 {msg.toolResults?.map((result, ri) => (
                   <ToolResultBadge key={ri} result={result} />
